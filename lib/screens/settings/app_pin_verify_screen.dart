@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../widgets/pin_keyboard.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:flutter/services.dart';
 
 class AppPinVerifyScreen extends StatefulWidget {
   const AppPinVerifyScreen({super.key});
@@ -15,6 +17,9 @@ class _AppPinVerifyScreenState extends State<AppPinVerifyScreen>
   final int _maxAttempts = 3;
   late AnimationController _shakeController;
   late Animation<double> _shakeAnimation;
+  final LocalAuthentication _localAuth = LocalAuthentication();
+  bool _canCheckBiometrics = false;
+  bool _isAuthenticating = false;
 
   @override
   void initState() {
@@ -26,6 +31,24 @@ class _AppPinVerifyScreenState extends State<AppPinVerifyScreen>
     _shakeAnimation = Tween<double>(begin: 0, end: 10).animate(
       CurvedAnimation(parent: _shakeController, curve: Curves.elasticIn),
     );
+    _initBiometric();
+  }
+
+  Future<void> _initBiometric() async {
+    try {
+      final canCheck = await _localAuth.canCheckBiometrics;
+      final isDeviceSupported = await _localAuth.isDeviceSupported();
+      final available = await _localAuth.getAvailableBiometrics();
+      if (mounted) {
+        setState(() {
+          _canCheckBiometrics = canCheck && isDeviceSupported && available.isNotEmpty;
+        });
+      }
+    } on PlatformException {
+      if (mounted) {
+        setState(() => _canCheckBiometrics = false);
+      }
+    }
   }
 
   @override
@@ -67,6 +90,24 @@ class _AppPinVerifyScreenState extends State<AppPinVerifyScreen>
         await Future.delayed(const Duration(seconds: 1));
         if (mounted) Navigator.pop(context, false);
       }
+    }
+  }
+
+  Future<void> _authenticateBiometric() async {
+    if (!_canCheckBiometrics || _isAuthenticating) return;
+    setState(() => _isAuthenticating = true);
+    try {
+      final didAuth = await _localAuth.authenticate(
+        localizedReason: 'Gunakan biometrik untuk verifikasi PIN',
+        options: const AuthenticationOptions(biometricOnly: true),
+      );
+      if (didAuth && mounted) {
+        Navigator.pop(context, true); // Treat as successful PIN entry
+      }
+    } on PlatformException {
+      // Ignore errors silently; could show a snackbar if desired
+    } finally {
+      if (mounted) setState(() => _isAuthenticating = false);
     }
   }
 
@@ -205,6 +246,9 @@ class _AppPinVerifyScreenState extends State<AppPinVerifyScreen>
                               currentPin: _enteredPin,
                               onPinChanged: _onPinChanged,
                               obscureText: true,
+                              showBiometricButton: _canCheckBiometrics,
+                              onBiometricPressed: _authenticateBiometric,
+                              biometricIcon: Icons.fingerprint,
                             ),
                           ),
                         ),

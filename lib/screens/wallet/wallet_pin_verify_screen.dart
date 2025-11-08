@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../widgets/pin_keyboard.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:flutter/services.dart';
 
 /// Screen untuk verifikasi PIN sebelum akses wallet yang di-hide
 class WalletPinVerifyScreen extends StatefulWidget {
@@ -25,6 +27,9 @@ class _WalletPinVerifyScreenState extends State<WalletPinVerifyScreen>
   bool _isError = false;
   late AnimationController _shakeController;
   late Animation<double> _shakeAnimation;
+  final LocalAuthentication _localAuth = LocalAuthentication();
+  bool _canCheckBiometrics = false;
+  bool _isAuthenticating = false;
 
   @override
   void initState() {
@@ -36,6 +41,22 @@ class _WalletPinVerifyScreenState extends State<WalletPinVerifyScreen>
     _shakeAnimation = Tween<double>(begin: 0, end: 10).animate(
       CurvedAnimation(parent: _shakeController, curve: Curves.elasticIn),
     );
+    _initBiometric();
+  }
+
+  Future<void> _initBiometric() async {
+    try {
+      final canCheck = await _localAuth.canCheckBiometrics;
+      final isDeviceSupported = await _localAuth.isDeviceSupported();
+      final available = await _localAuth.getAvailableBiometrics();
+      if (mounted) {
+        setState(() {
+          _canCheckBiometrics = canCheck && isDeviceSupported && available.isNotEmpty;
+        });
+      }
+    } on PlatformException {
+      if (mounted) setState(() => _canCheckBiometrics = false);
+    }
   }
 
   @override
@@ -101,6 +122,9 @@ class _WalletPinVerifyScreenState extends State<WalletPinVerifyScreen>
                 });
               },
               onCompleted: _verifyPin,
+              showBiometricButton: _canCheckBiometrics,
+              onBiometricPressed: _authenticateBiometric,
+              biometricIcon: Icons.fingerprint,
             ),
             const SizedBox(height: 24),
             // Error Message
@@ -186,6 +210,25 @@ class _WalletPinVerifyScreenState extends State<WalletPinVerifyScreen>
         });
         _shakeController.forward(from: 0);
       }
+    }
+  }
+
+  Future<void> _authenticateBiometric() async {
+    if (!_canCheckBiometrics || _isAuthenticating) return;
+    setState(() => _isAuthenticating = true);
+    try {
+      final didAuth = await _localAuth.authenticate(
+        localizedReason: 'Gunakan biometrik untuk membuka dompet',
+        options: const AuthenticationOptions(biometricOnly: true),
+      );
+      if (didAuth && mounted) {
+        widget.onSuccess();
+        Navigator.pop(context, true);
+      }
+    } on PlatformException {
+      // Ignore error
+    } finally {
+      if (mounted) setState(() => _isAuthenticating = false);
     }
   }
 

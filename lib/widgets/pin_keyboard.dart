@@ -10,6 +10,10 @@ class PinKeyboard extends StatelessWidget {
   final bool obscureText;
   final Color? buttonColor;
   final Color? deleteColor;
+  // Biometric button support (left slot on last row)
+  final bool showBiometricButton;
+  final VoidCallback? onBiometricPressed;
+  final IconData biometricIcon;
 
   const PinKeyboard({
     super.key,
@@ -20,6 +24,9 @@ class PinKeyboard extends StatelessWidget {
     this.obscureText = true,
     this.buttonColor,
     this.deleteColor,
+    this.showBiometricButton = false,
+    this.onBiometricPressed,
+    this.biometricIcon = Icons.fingerprint,
   });
 
   @override
@@ -113,11 +120,13 @@ class PinKeyboard extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 16),
-        // Row 4: Empty, 0, Delete
+        // Row 4: Biometric/Empty, 0, Delete
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const SizedBox(width: 80, height: 80), // Empty space
+            showBiometricButton
+                ? _buildBiometricButton(context)
+                : const SizedBox(width: 80, height: 80), // Empty space
             const SizedBox(width: 16),
             _buildNumberButton(context, '0'),
             const SizedBox(width: 16),
@@ -125,6 +134,33 @@ class PinKeyboard extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+
+  Widget _buildBiometricButton(BuildContext context) {
+    return InkWell(
+      onTap: onBiometricPressed,
+      borderRadius: BorderRadius.circular(40),
+      child: Container(
+        width: 80,
+        height: 80,
+        decoration: BoxDecoration(
+          color: Colors.blue.shade50,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Icon(
+          biometricIcon,
+          size: 28,
+          color: Colors.blue.shade700,
+        ),
+      ),
     );
   }
 
