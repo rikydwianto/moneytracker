@@ -42,62 +42,53 @@ const bool ENABLE_APP_CHECK = false; // DISABLED for web compatibility
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  print('[STARTUP] Starting Money Tracker App...');
-  print(
-    '[CONFIG] App Check Status: ${ENABLE_APP_CHECK ? "ENABLED" : "DISABLED"}',
-  );
+  // Startup logs trimmed to reduce noise
 
   // Initialize Indonesian locale for date formatting
   await initializeDateFormatting('id_ID', null);
-  print('[LOCALE] Indonesian locale initialized');
+  // Locale initialized
 
   // Initialize Firebase
-  print('[FIREBASE] Initializing Firebase...');
+  // Firebase initializing
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  print('[FIREBASE] Firebase initialized successfully');
+  // Firebase initialized
 
   // Initialize Firebase App Check with conditional loading
   if (ENABLE_APP_CHECK) {
-    print('[APPCHECK] Initializing Firebase App Check...');
+  // App Check init
     try {
-      print('[APPCHECK] Attempting to activate...');
+  // Attempting App Check activate
 
       await FirebaseAppCheck.instance.activate(
         androidProvider: AndroidProvider.debug,
         appleProvider: AppleProvider.debug,
       );
 
-      print('[APPCHECK] Activated successfully');
+  // App Check activated
 
       // Test token retrieval
       try {
-        final token = await FirebaseAppCheck.instance.getToken();
-        print(
-          '[TOKEN] App Check token obtained: ${token?.substring(0, 20) ?? 'null'}...',
-        );
+  await FirebaseAppCheck.instance.getToken();
+  // Token obtained (value ignored intentionally)
       } catch (tokenError) {
-        print('[TOKEN] App Check token error: $tokenError');
+  // Token error
       }
     } catch (e) {
-      print('[ERROR] Firebase App Check activation failed: $e');
-      print('[WARNING] App will continue without App Check protection');
+  debugPrint('[ERROR] Firebase App Check activation failed: $e');
 
       // Additional debug info
-      print('[DEBUG] Platform: Web/Chrome');
-      print('[DEBUG] Build mode: Debug');
-      print('[DEBUG] Provider: AndroidProvider.debug');
+  // Debug context removed
     }
   } else {
-    print('[DISABLED] Firebase App Check DISABLED by configuration');
-    print('[WARNING] App running without App Check protection');
+  // App Check disabled
   }
 
   // Initialize Hive for offline storage
-  print('[STORAGE] Initializing Hive...');
+  // Hive init
   await Hive.initFlutter();
-  print('[STORAGE] Hive initialized successfully');
+  // Hive ready
 
-  print('[LAUNCH] Launching app...');
+  // Launching app
   runApp(const MyApp());
 }
 
@@ -203,19 +194,17 @@ class _MyAppState extends State<MyApp> {
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
-          print(
-            '[AUTH] Auth state: ${snapshot.connectionState}, hasData: ${snapshot.hasData}, data: ${snapshot.data}',
-          );
+          // Auth state changes
 
           // Show splash while waiting for auth state
           if (snapshot.connectionState == ConnectionState.waiting) {
-            print('[AUTH] Showing splash - waiting for auth state');
+            // Splash while waiting auth
             return const SplashScreen();
           }
 
           // Handle auth errors
           if (snapshot.hasError) {
-            print('[AUTH] Auth error: ${snapshot.error}');
+            debugPrint('[ERROR] Auth error: ${snapshot.error}');
             return Scaffold(
               body: Center(
                 child: Column(
@@ -243,10 +232,10 @@ class _MyAppState extends State<MyApp> {
           }
 
           final user = snapshot.data;
-          print('[AUTH] Current user: ${user?.uid}');
+          // Current user id logged suppressed
 
           if (user == null) {
-            print('[AUTH] No user - showing auth screen');
+            // No user -> Auth screen
             return const AuthScreen();
           }
 
@@ -254,19 +243,15 @@ class _MyAppState extends State<MyApp> {
           return FutureBuilder<void>(
             future: UserService().ensureUserInitialized(user),
             builder: (context, initSnapshot) {
-              print(
-                '[USER] User init state: ${initSnapshot.connectionState}, hasError: ${initSnapshot.hasError}',
-              );
+              // User init state
 
               if (initSnapshot.connectionState == ConnectionState.waiting) {
-                print('[USER] Showing splash - initializing user data');
+                // Splash while initializing user
                 return const SplashScreen();
               }
 
               if (initSnapshot.hasError) {
-                print(
-                  '[USER] User initialization error: ${initSnapshot.error}',
-                );
+                debugPrint('[ERROR] User initialization error: ${initSnapshot.error}');
                 return Scaffold(
                   body: Center(
                     child: Column(
@@ -292,7 +277,7 @@ class _MyAppState extends State<MyApp> {
                 );
               }
 
-              print('[USER] Checking app lock gate before home');
+              // App lock gate check
               return AppLockGate(uid: user.uid);
             },
           );

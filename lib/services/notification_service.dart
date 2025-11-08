@@ -203,10 +203,7 @@ class NotificationService {
       },
     );
 
-    print('[NOTIFICATION] Transfer notification sent to $receiverUid');
-    print(
-      '[NOTIFICATION] Amount: ${_formatAmount(amount)}, Sender: $senderName',
-    );
+    // Removed verbose transfer notification prints
   }
 
   // Event notification - called when event is activated/deactivated
@@ -229,7 +226,7 @@ class NotificationService {
       data: {'eventName': eventName, 'action': action, 'eventId': eventId},
     );
 
-    print('[NOTIFICATION] Event notification sent: $eventName $action');
+  // Removed verbose event notification print
   }
 
   // Format amount helper
@@ -247,7 +244,9 @@ class NotificationService {
       return;
     }
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -274,7 +273,9 @@ class NotificationService {
             currency: 'IDR',
           );
         }
-        debugPrint('[NOTIFICATION] interaction payload=${response.payload} action=${response.actionId}');
+        debugPrint(
+          '[NOTIFICATION] interaction payload=${response.payload} action=${response.actionId}',
+        );
       },
     );
     _initialized = true;

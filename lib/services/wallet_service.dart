@@ -231,35 +231,21 @@ class WalletService {
       updatedAt: DateTime.now(),
     );
 
-    // Debug: Print transaksi yang akan disimpan
-    print('=== TRANSFER DEBUG ===');
-    print(
-      'outTx: walletId=${outTx.walletId}, toWalletId=${outTx.toWalletId}, type=${outTx.type}, title=${outTx.title}',
-    );
-    print(
-      'inTx: walletId=${inTx.walletId}, toWalletId=${inTx.toWalletId}, type=${inTx.type}, title=${inTx.title}',
-    );
+    // Debug detail dihapus untuk mengurangi noise log (gunakan logger bila diperlukan)
 
     // Simpan transaksi satu per satu dengan error handling
     try {
-      print('=== SAVING outTx ===');
       await txService.add(uid, outTx);
-      print('✓ outTx saved');
     } catch (e) {
-      print('✗ Error saving outTx: $e');
+      // Tetap log error bila diperlukan dengan logger nanti
       rethrow;
     }
 
     try {
-      print('=== SAVING inTx ===');
       await txService.add(uid, inTx);
-      print('✓ inTx saved');
     } catch (e) {
-      print('✗ Error saving inTx: $e');
       rethrow;
     }
-
-    print('=== BOTH TRANSACTIONS SAVED ===');
   }
 
   Future<void> transferAcrossUsers(
@@ -387,7 +373,7 @@ class WalletService {
       walletName: to.name,
     );
 
-    print('[TRANSFER] Notification sent to receiver: $toUid');
+  // Removed verbose notification print
   }
 
   // Set a wallet as default and unset other wallets

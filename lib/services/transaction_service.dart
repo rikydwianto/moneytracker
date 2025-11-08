@@ -7,25 +7,11 @@ class TransactionService {
   DatabaseReference _txRef(String uid) => _rtdb.ref('users/$uid/transactions');
 
   Future<String> add(String uid, TransactionModel tx) async {
-    print(
-      'TransactionService.add: uid=$uid, walletId=${tx.walletId}, type=${tx.type}, title=${tx.title}',
-    );
     final ref = _txRef(uid).push();
     final withId = tx.copyWith(id: ref.key!);
-    print('Generated transaction ID: ${ref.key}');
     final data = withId.toRtdbMap();
-    print('Data to save: $data');
     await ref.set(data);
-    print('Transaction saved successfully');
-
-    // Verifikasi: baca kembali data yang baru disimpan
-    final snapshot = await ref.get();
-    if (snapshot.exists) {
-      print('✓ Verification: Transaction exists in Firebase');
-      print('  Data: ${snapshot.value}');
-    } else {
-      print('✗ WARNING: Transaction not found after save!');
-    }
+    // Optional: verification removed to reduce log noise
 
     return ref.key!;
   }
