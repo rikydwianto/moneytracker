@@ -1140,20 +1140,23 @@ class _WalletSelectionSheet extends StatelessWidget {
                   );
                 }
 
-                final data =
-                    snapshot.data!.snapshot.value as Map<dynamic, dynamic>;
-                final wallets = data.entries.map((entry) {
-                  return Wallet.fromRtdb(
-                    entry.key,
-                    entry.value as Map<dynamic, dynamic>,
-                  );
+                final data = snapshot.data!.snapshot.value as Map<dynamic, dynamic>;
+                final entries = data.entries.toList();
+
+                // Build list of wallet models for callback use
+                final wallets = entries.map((e) {
+                  final rawMap = (e.value as Map).cast<dynamic, dynamic>();
+                  return Wallet.fromRtdb(e.key, rawMap);
                 }).toList();
 
                 return ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  itemCount: wallets.length,
+                  itemCount: entries.length,
                   itemBuilder: (context, index) {
-                    final wallet = wallets[index];
+                    final entry = entries[index];
+                    final rawMap = (entry.value as Map).cast<dynamic, dynamic>();
+                    final wallet = Wallet.fromRtdb(entry.key, rawMap);
+                    final isHidden = (rawMap['isHidden'] as bool?) ?? false;
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
                       elevation: 2,
@@ -1195,15 +1198,17 @@ class _WalletSelectionSheet extends StatelessWidget {
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
-                            subtitle: Text(
-                              'Saldo: ${IdrFormatters.format(realTimeBalance)}',
-                              style: TextStyle(
-                                color: realTimeBalance >= 0
-                                    ? Colors.green
-                                    : Colors.red,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
+                            subtitle: isHidden
+                                ? null
+                                : Text(
+                                    'Saldo: ${IdrFormatters.format(realTimeBalance)}',
+                                    style: TextStyle(
+                                      color: realTimeBalance >= 0
+                                          ? Colors.green
+                                          : Colors.red,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
                             onTap: () {
                               // Create updated wallet with real-time balance
                               final updatedWallet = Wallet(
@@ -1590,9 +1595,10 @@ class _WalletsPageState extends State<WalletsPage> {
                       ),
                       builder: (context, snapshot) {
                         final balance = snapshot.data ?? 0.0;
+                        // Jika dompet hidden, jangan tampilkan saldo (pass null & showBalance=false via isHidden)
                         return ModernWalletCard(
                           wallet: w,
-                          balance: balance,
+                          balance: isHidden ? null : balance,
                           isCompact: true,
                           walletType: type,
                           isHidden: isHidden,
@@ -1693,7 +1699,7 @@ class _WalletsPageState extends State<WalletsPage> {
                         final balance = snapshot.data ?? 0.0;
                         return ModernWalletCard(
                           wallet: w,
-                          balance: balance,
+                          balance: isHidden ? null : balance,
                           isCompact: true,
                           walletType: type,
                           isHidden: isHidden,
