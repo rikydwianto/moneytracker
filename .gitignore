@@ -1,0 +1,96 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# Editor/IDE
+.vscode/
+.idea/
+*.iml
+.gradle/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+
+# Flutter extras
+coverage/
+.melos_tool/
+.packages
+
+# Android
+**/local.properties
+**/key.properties
+**/app/google-services.json
+**/app/debug/
+**/app/release/
+**/captures/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# iOS/macOS
+**/ios/Pods/
+**/ios/Flutter/
+**/ios/Runner/GeneratedPluginRegistrant.*
+**/ios/Runner/GoogleService-Info.plist
+**/macos/Pods/
+**/macos/Flutter/
+
+# Web
+**/web/.dart_tool/
+**/web/.cache/
+
+# Windows/Linux
+**/windows/flutter/
+**/linux/flutter/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+.env.*
+**/*.keystore
+**/*.jks
+**/*.p12
+**/*.pem
+**/*.key
+
+# Local databases
+**/*.hive
+**/hive/**
+**/databases/**
+
+# Generated assets
+**/assets/generated/**

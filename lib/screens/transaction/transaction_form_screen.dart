@@ -1,0 +1,2531 @@
+import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/material.dart';
+import '../../models/transaction.dart';
+import '../../models/event.dart';
+import '../../services/transaction_service.dart';
+import '../../services/event_service.dart';
+import '../../services/wallet_service.dart';
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import '../../widgets/custom_numeric_keyboard.dart';
+
+// Custom formatter untuk format Rupiah
+class RupiahInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    if (newValue.text.isEmpty) {
+      return newValue;
+    }
+
+    // Hapus semua karakter non-digit
+    String digitsOnly = newValue.text.replaceAll(RegExp(r'[^\d]'), '');
+
+    if (digitsOnly.isEmpty) {
+      return const TextEditingValue();
+    }
+
+    // Format dengan pemisah ribuan
+    final formatter = NumberFormat('#,###', 'id_ID');
+    final formattedValue = formatter.format(int.parse(digitsOnly));
+
+    return TextEditingValue(
+      text: formattedValue,
+      selection: TextSelection.collapsed(offset: formattedValue.length),
+    );
+  }
+}
+
+class TransactionFormScreen extends StatefulWidget {
+  const TransactionFormScreen({super.key});
+
+  @override
+  State<TransactionFormScreen> createState() => _TransactionFormScreenState();
+}
+
+class _TransactionFormScreenState extends State<TransactionFormScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _title = TextEditingController();
+  final _amount = TextEditingController();
+  TransactionType _type = TransactionType.expense;
+  String? _categoryId;
+  String? _walletId;
+  DateTime _date = DateTime.now();
+  final _notes = TextEditingController();
+  bool _loading = false;
+  String? _eventId;
+  Event? _activeEvent;
+
+  // Photo handling
+  XFile? _photoFile;
+  String? _photoUrl;
+  bool _uploadingPhoto = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadActiveEvent();
+    _loadDefaultWallet();
+  }
+
+  Future<void> _loadActiveEvent() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final event = await EventService().getActiveEvent(user.uid);
+      if (mounted) {
+        setState(() {
+          _activeEvent = event;
+          _eventId = event?.id;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadDefaultWallet() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null && _walletId == null) {
+      final defaultWallet = await WalletService().getDefaultWallet(user.uid);
+      if (defaultWallet != null && mounted) {
+        setState(() {
+          _walletId = defaultWallet.id;
+        });
+      }
+    }
+  }
+
+  bool get _isFormValid {
+    final cleanAmount = _amount.text.replaceAll(RegExp(r'[^\d]'), '');
+    return _walletId != null &&
+        _categoryId != null &&
+        _amount.text.isNotEmpty &&
+        (int.tryParse(cleanAmount) ?? 0) > 0;
+  }
+
+  Future<void> _pickPhoto() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? photo = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1920,
+        maxHeight: 1920,
+        imageQuality: 85,
+      );
+
+      if (photo != null) {
+        setState(() {
+          _photoFile = photo;
+        });
+
+        // Upload to Firebase Storage immediately
+        await _uploadPhoto(photo);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal memilih foto: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _uploadPhoto(XFile photo) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    setState(() => _uploadingPhoto = true);
+
+    try {
+      final String fileName =
+          '${DateTime.now().millisecondsSinceEpoch}_${photo.name}';
+      final Reference storageRef = FirebaseStorage.instance
+          .ref()
+          .child('transactions')
+          .child(user.uid)
+          .child(fileName);
+
+      if (kIsWeb) {
+        // For web: read as bytes
+        final bytes = await photo.readAsBytes();
+        await storageRef.putData(
+          bytes,
+          SettableMetadata(contentType: 'image/jpeg'),
+        );
+      } else {
+        // For mobile: use file path
+        final File file = File(photo.path);
+        await storageRef.putFile(file);
+      }
+
+      // Get download URL
+      final String downloadUrl = await storageRef.getDownloadURL();
+
+      setState(() {
+        _photoUrl = downloadUrl;
+        _uploadingPhoto = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Foto berhasil diupload'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() => _uploadingPhoto = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal upload foto: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _removePhoto() async {
+    setState(() {
+      _photoFile = null;
+      _photoUrl = null;
+    });
+  }
+
+  void _showCustomKeyboard() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 10,
+              offset: const Offset(0, -5),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          child: CustomNumericKeyboard(
+            controller: _amount,
+            onDone: () {
+              Navigator.pop(context);
+              // Format nilai setelah selesai input
+              final cleanValue = _amount.text.replaceAll(RegExp(r'[^\d]'), '');
+              if (cleanValue.isNotEmpty) {
+                final formatter = NumberFormat('#,###', 'id_ID');
+                _amount.text = formatter.format(int.parse(cleanValue));
+              }
+            },
+            doneLabel: 'SELESAI',
+            doneColor: Colors.green,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submit() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Silakan masuk terlebih dahulu')),
+      );
+      return;
+    }
+
+    // Validasi field wajib
+    if (_walletId == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Silakan pilih dompet')));
+      return;
+    }
+    if (_categoryId == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Silakan pilih kategori')));
+      return;
+    }
+
+    // Hapus pemisah ribuan sebelum validasi dan simpan
+    final cleanAmount = _amount.text.replaceAll(RegExp(r'[^\d]'), '');
+    if (cleanAmount.isEmpty || (int.tryParse(cleanAmount) ?? 0) <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Masukkan jumlah yang valid')),
+      );
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      final amount =
+          int.tryParse(_amount.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+      final tx = TransactionModel(
+        id: '',
+        title: _title.text.trim().isEmpty ? 'Transaksi' : _title.text.trim(),
+        amount: amount.toDouble(),
+        type: _type,
+        categoryId: _categoryId!,
+        walletId: _walletId!,
+        toWalletId: null,
+        date: _date,
+        notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+        photoUrl: _photoUrl, // Use uploaded photo URL
+        userId: user.uid,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        eventId: _eventId,
+      );
+      await TransactionService().add(user.uid, tx);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Transaksi berhasil disimpan'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.of(context).pop(true);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Terjadi kesalahan: $e')));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    return Scaffold(
+      backgroundColor: Colors.grey[100],
+      appBar: AppBar(
+        leading: TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Batal', style: TextStyle(fontSize: 14)),
+        ),
+        leadingWidth: 70,
+        title: const Text('Tambah Transaksi'),
+        centerTitle: true,
+      ),
+      body: user == null
+          ? const Center(child: Text('Silakan masuk terlebih dahulu'))
+          : StreamBuilder<DatabaseEvent>(
+              stream: FirebaseDatabase.instance
+                  .ref('users/${user.uid}/wallets')
+                  .onValue,
+              builder: (context, walletSnap) {
+                return StreamBuilder<DatabaseEvent>(
+                  stream: FirebaseDatabase.instance
+                      .ref('users/${user.uid}/categories')
+                      .onValue,
+                  builder: (context, catSnap) {
+                    return StreamBuilder<DatabaseEvent>(
+                      stream: FirebaseDatabase.instance
+                          .ref('users/${user.uid}/events')
+                          .onValue,
+                      builder: (context, eventSnap) {
+                        final walletData = walletSnap.data?.snapshot.value;
+                        final walletsMap = (walletData is Map)
+                            ? walletData.cast<String, dynamic>()
+                            : <String, dynamic>{};
+                        final wallets =
+                            walletsMap.entries
+                                .map(
+                                  (e) => {
+                                    'id': e.key,
+                                    ...((e.value as Map)
+                                        .cast<String, dynamic>()),
+                                  },
+                                )
+                                .toList()
+                              ..sort(
+                                (a, b) => ((a['name'] ?? '') as String)
+                                    .toLowerCase()
+                                    .compareTo(
+                                      ((b['name'] ?? '') as String)
+                                          .toLowerCase(),
+                                    ),
+                              );
+
+                        final catData = catSnap.data?.snapshot.value;
+                        final catsMap = (catData is Map)
+                            ? catData.cast<String, dynamic>()
+                            : <String, dynamic>{};
+                        final cats =
+                            catsMap.entries
+                                .map(
+                                  (e) => {
+                                    'id': e.key,
+                                    ...((e.value as Map)
+                                        .cast<String, dynamic>()),
+                                  },
+                                )
+                                .toList()
+                              ..sort(
+                                (a, b) => ((a['name'] ?? '') as String)
+                                    .toLowerCase()
+                                    .compareTo(
+                                      ((b['name'] ?? '') as String)
+                                          .toLowerCase(),
+                                    ),
+                              );
+                        final Map<String, Map<String, dynamic>> catsIndex = {
+                          for (final m in cats) m['id'] as String: m,
+                        };
+
+                        // Parse events
+                        final eventData = eventSnap.data?.snapshot.value;
+                        final eventsMap = (eventData is Map)
+                            ? eventData.cast<String, dynamic>()
+                            : <String, dynamic>{};
+                        final events =
+                            eventsMap.entries
+                                .map(
+                                  (e) => {
+                                    'id': e.key,
+                                    ...((e.value as Map)
+                                        .cast<String, dynamic>()),
+                                  },
+                                )
+                                .toList()
+                              ..sort(
+                                (a, b) => ((a['name'] ?? '') as String)
+                                    .toLowerCase()
+                                    .compareTo(
+                                      ((b['name'] ?? '') as String)
+                                          .toLowerCase(),
+                                    ),
+                              );
+
+                        return Form(
+                          key: _formKey,
+                          child: Column(
+                            children: [
+                              Expanded(
+                                child: SingleChildScrollView(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      const SizedBox(height: 8),
+                                      // Wallet Selection Card
+                                      _buildSectionCard(
+                                        context,
+                                        child: InkWell(
+                                          onTap: () => _showWalletPicker(
+                                            context,
+                                            wallets,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            0,
+                                          ),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 14,
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                CircleAvatar(
+                                                  backgroundColor:
+                                                      Colors.orange.shade100,
+                                                  radius: 20,
+                                                  child: _walletId == null
+                                                      ? Icon(
+                                                          Icons
+                                                              .account_balance_wallet,
+                                                          color: Colors
+                                                              .orange
+                                                              .shade700,
+                                                          size: 20,
+                                                        )
+                                                      : Text(
+                                                          wallets
+                                                                  .firstWhere(
+                                                                    (w) =>
+                                                                        w['id'] ==
+                                                                        _walletId,
+                                                                    orElse: () => {
+                                                                      'icon':
+                                                                          '💰',
+                                                                    },
+                                                                  )['icon']
+                                                                  ?.toString() ??
+                                                              '💰',
+                                                          style:
+                                                              const TextStyle(
+                                                                fontSize: 20,
+                                                              ),
+                                                        ),
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Text(
+                                                    _walletId == null
+                                                        ? 'Dompet'
+                                                        : wallets
+                                                                  .firstWhere(
+                                                                    (w) =>
+                                                                        w['id'] ==
+                                                                        _walletId,
+                                                                    orElse: () => {
+                                                                      'name':
+                                                                          'Dompet',
+                                                                    },
+                                                                  )['name']
+                                                                  ?.toString() ??
+                                                              'Dompet',
+                                                    style: TextStyle(
+                                                      fontSize: 16,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                      color: _walletId == null
+                                                          ? Colors.grey[400]
+                                                          : Colors.black87,
+                                                    ),
+                                                  ),
+                                                ),
+                                                Icon(
+                                                  Icons.chevron_right,
+                                                  color: Colors.grey[400],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      // Amount Input Card
+                                      _buildSectionCard(
+                                        context,
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 14,
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Container(
+                                                padding: const EdgeInsets.all(
+                                                  8,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.grey[200],
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                ),
+                                                child: const Text(
+                                                  'IDR',
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.black54,
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: TextFormField(
+                                                  controller: _amount,
+                                                  readOnly: true,
+                                                  onTap: _showCustomKeyboard,
+                                                  style: const TextStyle(
+                                                    fontSize: 32,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                  decoration:
+                                                      const InputDecoration(
+                                                        hintText:
+                                                            'Rp. 1.000.000',
+                                                        hintStyle: TextStyle(
+                                                          fontSize: 32,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          color: Colors.black26,
+                                                        ),
+                                                        border:
+                                                            InputBorder.none,
+                                                        contentPadding:
+                                                            EdgeInsets.only(
+                                                              bottom: 8,
+                                                            ),
+                                                      ),
+
+                                                  validator: (v) {
+                                                    // Hapus pemisah ribuan sebelum validasi
+                                                    final cleanValue = (v ?? '')
+                                                        .replaceAll(
+                                                          RegExp(r'[^\d]'),
+                                                          '',
+                                                        );
+                                                    final n =
+                                                        int.tryParse(
+                                                          cleanValue,
+                                                        ) ??
+                                                        0;
+                                                    if (n <= 0) {
+                                                      return 'Masukkan jumlah yang valid';
+                                                    }
+                                                    return null;
+                                                  },
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      // Category Selection Card
+                                      _buildSectionCard(
+                                        context,
+                                        child: InkWell(
+                                          onTap: () => _showCategoryPicker(
+                                            context,
+                                            cats,
+                                            catsIndex,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            0,
+                                          ),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 14,
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                // Tampilkan icon dari kategori yang dipilih
+                                                Builder(
+                                                  builder: (context) {
+                                                    if (_categoryId == null) {
+                                                      return CircleAvatar(
+                                                        backgroundColor:
+                                                            Colors.grey[200],
+                                                        radius: 20,
+                                                        child: Icon(
+                                                          Icons.category,
+                                                          color:
+                                                              Colors.grey[400],
+                                                          size: 20,
+                                                        ),
+                                                      );
+                                                    }
+
+                                                    // Ambil data kategori yang dipilih
+                                                    final selectedCat =
+                                                        catsIndex[_categoryId];
+                                                    final iconStr =
+                                                        selectedCat?['icon']
+                                                            as String?;
+                                                    final colorStr =
+                                                        selectedCat?['color']
+                                                            as String?;
+
+                                                    // Parse color
+                                                    Color categoryColor =
+                                                        _getCategoryColor(
+                                                          _getCategoryName(
+                                                            _categoryId!,
+                                                            cats,
+                                                            catsIndex,
+                                                          ),
+                                                        );
+                                                    if (colorStr != null &&
+                                                        colorStr.isNotEmpty) {
+                                                      try {
+                                                        final colorValue =
+                                                            int.parse(
+                                                              colorStr
+                                                                  .replaceAll(
+                                                                    '#',
+                                                                    '',
+                                                                  ),
+                                                              radix: 16,
+                                                            );
+                                                        categoryColor = Color(
+                                                          colorValue,
+                                                        );
+                                                      } catch (e) {
+                                                        // Keep default
+                                                      }
+                                                    }
+
+                                                    // Parse icon
+                                                    bool isEmoji = false;
+                                                    IconData iconData =
+                                                        Icons.category;
+                                                    if (iconStr != null &&
+                                                        iconStr.isNotEmpty) {
+                                                      final iconFromFirebase =
+                                                          _getIconDataFromString(
+                                                            iconStr,
+                                                          );
+                                                      if (iconFromFirebase !=
+                                                          null) {
+                                                        iconData =
+                                                            iconFromFirebase;
+                                                      } else {
+                                                        isEmoji = true;
+                                                      }
+                                                    }
+
+                                                    return CircleAvatar(
+                                                      backgroundColor:
+                                                          categoryColor
+                                                              .withOpacity(0.2),
+                                                      radius: 20,
+                                                      child: isEmoji
+                                                          ? Text(
+                                                              iconStr ?? '',
+                                                              style:
+                                                                  const TextStyle(
+                                                                    fontSize:
+                                                                        20,
+                                                                  ),
+                                                            )
+                                                          : Icon(
+                                                              iconData,
+                                                              color:
+                                                                  categoryColor,
+                                                              size: 20,
+                                                            ),
+                                                    );
+                                                  },
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Text(
+                                                    _categoryId == null
+                                                        ? 'Pilih Kategori'
+                                                        : _getCategoryName(
+                                                            _categoryId!,
+                                                            cats,
+                                                            catsIndex,
+                                                          ),
+                                                    style: TextStyle(
+                                                      fontSize: 16,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                      color: _categoryId == null
+                                                          ? Colors.grey[400]
+                                                          : Colors.black87,
+                                                    ),
+                                                  ),
+                                                ),
+                                                Icon(
+                                                  Icons.chevron_right,
+                                                  color: Colors.grey[400],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      // Event Selection Card
+                                      _buildSectionCard(
+                                        context,
+                                        child: InkWell(
+                                          onTap: () =>
+                                              _showEventPicker(context, events),
+                                          borderRadius: BorderRadius.circular(
+                                            0,
+                                          ),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 14,
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                CircleAvatar(
+                                                  backgroundColor:
+                                                      _eventId == null
+                                                      ? Colors.grey[200]
+                                                      : Colors.purple.shade100,
+                                                  radius: 20,
+                                                  child: Icon(
+                                                    Icons.event,
+                                                    color: _eventId == null
+                                                        ? Colors.grey[400]
+                                                        : Colors
+                                                              .purple
+                                                              .shade700,
+                                                    size: 20,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      Text(
+                                                        _eventId == null
+                                                            ? 'Pilih Acara (Opsional)'
+                                                            : _getEventName(
+                                                                _eventId!,
+                                                                events,
+                                                              ),
+                                                        style: TextStyle(
+                                                          fontSize: 16,
+                                                          fontWeight:
+                                                              FontWeight.w500,
+                                                          color:
+                                                              _eventId == null
+                                                              ? Colors.grey[400]
+                                                              : Colors.black87,
+                                                        ),
+                                                      ),
+                                                      if (_eventId != null)
+                                                        Text(
+                                                          'Transaksi akan masuk ke acara ini',
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: Colors
+                                                                .grey[600],
+                                                          ),
+                                                        ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                Icon(
+                                                  Icons.chevron_right,
+                                                  color: Colors.grey[400],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      // Notes Card
+                                      _buildSectionCard(
+                                        context,
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 8,
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                Icons.notes,
+                                                color: Colors.grey[600],
+                                                size: 24,
+                                              ),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: TextFormField(
+                                                  controller: _notes,
+                                                  decoration: InputDecoration(
+                                                    hintText:
+                                                        'Catatan (opsional)',
+                                                    hintStyle: TextStyle(
+                                                      color: Colors.grey[400],
+                                                    ),
+                                                    border: InputBorder.none,
+                                                    contentPadding:
+                                                        const EdgeInsets.symmetric(
+                                                          vertical: 8,
+                                                        ),
+                                                  ),
+                                                  style: const TextStyle(
+                                                    fontSize: 16,
+                                                  ),
+                                                  maxLines: 1,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      // Date Selection Card
+                                      _buildSectionCard(
+                                        context,
+                                        child: InkWell(
+                                          onTap: () async {
+                                            final picked = await showDatePicker(
+                                              context: context,
+                                              initialDate: _date,
+                                              firstDate: DateTime(2000),
+                                              lastDate: DateTime(2100),
+                                              locale: const Locale('id', 'ID'),
+                                            );
+                                            if (picked != null) {
+                                              setState(() {
+                                                _date = DateTime(
+                                                  picked.year,
+                                                  picked.month,
+                                                  picked.day,
+                                                  _date.hour,
+                                                  _date.minute,
+                                                );
+                                              });
+                                            }
+                                          },
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 14,
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.calendar_today,
+                                                  color: Colors.grey[600],
+                                                  size: 22,
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Text(
+                                                    _formatDate(_date),
+                                                    style: const TextStyle(
+                                                      fontSize: 16,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                      color: Colors.green,
+                                                    ),
+                                                  ),
+                                                ),
+                                                Row(
+                                                  children: [
+                                                    IconButton(
+                                                      icon: const Icon(
+                                                        Icons.chevron_left,
+                                                        size: 20,
+                                                      ),
+                                                      onPressed: () {
+                                                        setState(() {
+                                                          _date = _date
+                                                              .subtract(
+                                                                const Duration(
+                                                                  days: 1,
+                                                                ),
+                                                              );
+                                                        });
+                                                      },
+                                                      padding: EdgeInsets.zero,
+                                                      constraints:
+                                                          const BoxConstraints(),
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    IconButton(
+                                                      icon: const Icon(
+                                                        Icons.chevron_right,
+                                                        size: 20,
+                                                      ),
+                                                      onPressed: () {
+                                                        setState(() {
+                                                          _date = _date.add(
+                                                            const Duration(
+                                                              days: 1,
+                                                            ),
+                                                          );
+                                                        });
+                                                      },
+                                                      padding: EdgeInsets.zero,
+                                                      constraints:
+                                                          const BoxConstraints(),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      // Title Card
+                                      _buildSectionCard(
+                                        context,
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 8,
+                                          ),
+                                          child: TextFormField(
+                                            controller: _title,
+                                            decoration: InputDecoration(
+                                              hintText:
+                                                  'Keterangan transaksi (opsional)',
+                                              hintStyle: TextStyle(
+                                                color: Colors.grey[400],
+                                              ),
+                                              border: InputBorder.none,
+                                              contentPadding:
+                                                  const EdgeInsets.symmetric(
+                                                    vertical: 8,
+                                                  ),
+                                            ),
+                                            style: const TextStyle(
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      // With/Person Card
+                                      _buildSectionCard(
+                                        context,
+                                        child: InkWell(
+                                          onTap: () {
+                                            // TODO: Implement person selection
+                                          },
+                                          borderRadius: BorderRadius.circular(
+                                            0,
+                                          ),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 14,
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.people_outline,
+                                                  color: Colors.grey[600],
+                                                  size: 24,
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Text(
+                                                    'Dengan',
+                                                    style: TextStyle(
+                                                      fontSize: 16,
+                                                      color: Colors.grey[400],
+                                                    ),
+                                                  ),
+                                                ),
+                                                Icon(
+                                                  Icons.chevron_right,
+                                                  color: Colors.grey[400],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      // Location Card
+                                      _buildSectionCard(
+                                        context,
+                                        child: InkWell(
+                                          onTap: () {
+                                            // TODO: Implement location selection
+                                          },
+                                          borderRadius: BorderRadius.circular(
+                                            0,
+                                          ),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 14,
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.location_on_outlined,
+                                                  color: Colors.grey[600],
+                                                  size: 24,
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Text(
+                                                    'Tetapkan lokasi',
+                                                    style: TextStyle(
+                                                      fontSize: 16,
+                                                      color: Colors.grey[400],
+                                                    ),
+                                                  ),
+                                                ),
+                                                Icon(
+                                                  Icons.chevron_right,
+                                                  color: Colors.grey[400],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      // Event Card
+                                      if (_activeEvent != null)
+                                        _buildSectionCard(
+                                          context,
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 14,
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.event,
+                                                  color: Theme.of(
+                                                    context,
+                                                  ).primaryColor,
+                                                  size: 24,
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Text(
+                                                    _activeEvent!.name,
+                                                    style: const TextStyle(
+                                                      fontSize: 16,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                    ),
+                                                  ),
+                                                ),
+                                                IconButton(
+                                                  icon: const Icon(
+                                                    Icons.close,
+                                                    size: 20,
+                                                  ),
+                                                  onPressed: () {
+                                                    setState(() {
+                                                      _eventId = null;
+                                                      _activeEvent = null;
+                                                    });
+                                                  },
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        )
+                                      else
+                                        _buildSectionCard(
+                                          context,
+                                          child: InkWell(
+                                            onTap: () {
+                                              // TODO: Show event picker
+                                            },
+                                            borderRadius: BorderRadius.circular(
+                                              0,
+                                            ),
+                                            child: Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 16,
+                                                    vertical: 14,
+                                                  ),
+                                              child: Row(
+                                                children: [
+                                                  Icon(
+                                                    Icons.luggage_outlined,
+                                                    color: Colors.grey[600],
+                                                    size: 24,
+                                                  ),
+                                                  const SizedBox(width: 12),
+                                                  Expanded(
+                                                    child: Text(
+                                                      'Pilih acara',
+                                                      style: TextStyle(
+                                                        fontSize: 16,
+                                                        color: Colors.grey[400],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  Icon(
+                                                    Icons.chevron_right,
+                                                    color: Colors.grey[400],
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      // Reminder Card
+                                      _buildSectionCard(
+                                        context,
+                                        child: InkWell(
+                                          onTap: () {
+                                            // TODO: Implement reminder
+                                          },
+                                          borderRadius: BorderRadius.circular(
+                                            0,
+                                          ),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 16,
+                                              vertical: 14,
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.alarm,
+                                                  color: Colors.grey[600],
+                                                  size: 24,
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Text(
+                                                    'Tidak ada pengingatꜛ',
+                                                    style: TextStyle(
+                                                      fontSize: 16,
+                                                      color: Colors.grey[400],
+                                                    ),
+                                                  ),
+                                                ),
+                                                Icon(
+                                                  Icons.chevron_right,
+                                                  color: Colors.grey[400],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 16),
+                                      // Add Photo Button
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 16,
+                                        ),
+                                        child:
+                                            _photoFile != null ||
+                                                _photoUrl != null
+                                            ? Column(
+                                                children: [
+                                                  // Preview photo
+                                                  if (_photoFile != null)
+                                                    Stack(
+                                                      children: [
+                                                        Container(
+                                                          height: 200,
+                                                          width:
+                                                              double.infinity,
+                                                          decoration: BoxDecoration(
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  12,
+                                                                ),
+                                                            border: Border.all(
+                                                              color: Colors
+                                                                  .grey
+                                                                  .shade300,
+                                                            ),
+                                                          ),
+                                                          child: ClipRRect(
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  12,
+                                                                ),
+                                                            child: kIsWeb
+                                                                ? Image.network(
+                                                                    _photoFile!
+                                                                        .path,
+                                                                    fit: BoxFit
+                                                                        .cover,
+                                                                  )
+                                                                : Image.file(
+                                                                    File(
+                                                                      _photoFile!
+                                                                          .path,
+                                                                    ),
+                                                                    fit: BoxFit
+                                                                        .cover,
+                                                                  ),
+                                                          ),
+                                                        ),
+                                                        Positioned(
+                                                          top: 8,
+                                                          right: 8,
+                                                          child: IconButton(
+                                                            onPressed:
+                                                                _removePhoto,
+                                                            icon: const Icon(
+                                                              Icons.close,
+                                                            ),
+                                                            style: IconButton.styleFrom(
+                                                              backgroundColor:
+                                                                  Colors
+                                                                      .black54,
+                                                              foregroundColor:
+                                                                  Colors.white,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  if (_uploadingPhoto)
+                                                    const Padding(
+                                                      padding: EdgeInsets.all(
+                                                        16.0,
+                                                      ),
+                                                      child: Column(
+                                                        children: [
+                                                          CircularProgressIndicator(),
+                                                          SizedBox(height: 8),
+                                                          Text(
+                                                            'Mengupload foto...',
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                ],
+                                              )
+                                            : OutlinedButton.icon(
+                                                onPressed: _uploadingPhoto
+                                                    ? null
+                                                    : _pickPhoto,
+                                                icon: Icon(
+                                                  Icons.add_photo_alternate,
+                                                  color: Colors.green[600],
+                                                ),
+                                                label: Text(
+                                                  'Tambahkan foto',
+                                                  style: TextStyle(
+                                                    color: Colors.green[600],
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                                style: OutlinedButton.styleFrom(
+                                                  side: BorderSide(
+                                                    color: Colors.green[600]!,
+                                                  ),
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        vertical: 14,
+                                                      ),
+                                                ),
+                                              ),
+                                      ),
+                                      const SizedBox(height: 16),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              // Bottom Save Button
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.1),
+                                      blurRadius: 20,
+                                      offset: const Offset(0, -5),
+                                    ),
+                                  ],
+                                ),
+                                child: SafeArea(
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 300),
+                                    curve: Curves.easeInOut,
+                                    child: FilledButton(
+                                      onPressed: _loading ? null : _submit,
+                                      style: FilledButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 18,
+                                        ),
+                                        backgroundColor: _isFormValid
+                                            ? Theme.of(context).primaryColor
+                                            : Colors.grey[400],
+                                        foregroundColor: Colors.white,
+                                        elevation: _isFormValid ? 4 : 0,
+                                        shadowColor: _isFormValid
+                                            ? Theme.of(
+                                                context,
+                                              ).primaryColor.withOpacity(0.5)
+                                            : Colors.transparent,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                        ),
+                                      ),
+                                      child: _loading
+                                          ? const SizedBox(
+                                              width: 24,
+                                              height: 24,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2.5,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : Row(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                const Icon(
+                                                  Icons.check_circle_outline,
+                                                  size: 22,
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Text(
+                                                  'Simpan Transaksi',
+                                                  style: const TextStyle(
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.bold,
+                                                    letterSpacing: 0.5,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            ),
+    );
+  }
+
+  Widget _buildSectionCard(BuildContext context, {required Widget child}) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: Colors.grey[200]!, width: 1)),
+      ),
+      child: child,
+    );
+  }
+
+  String _getCategoryName(
+    String categoryId,
+    List<Map<String, dynamic>> cats,
+    Map<String, Map<String, dynamic>> catsIndex,
+  ) {
+    final cat = cats.firstWhere(
+      (c) => c['id'] == categoryId,
+      orElse: () => {'name': 'Kategori'},
+    );
+    final name = (cat['name'] ?? 'Kategori') as String;
+    final pid = cat['parentId'] as String?;
+    if (pid == null) return name;
+    final parentName = (catsIndex[pid]?['name'] ?? '') as String;
+    if (parentName.isEmpty) return name;
+    return '$parentName / $name';
+  }
+
+  String _formatDate(DateTime date) {
+    final days = [
+      'Minggu',
+      'Senin',
+      'Selasa',
+      'Rabu',
+      'Kamis',
+      'Jumat',
+      'Sabtu',
+    ];
+    final months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'Mei',
+      'Jun',
+      'Jul',
+      'Agu',
+      'Sep',
+      'Okt',
+      'Nov',
+      'Des',
+    ];
+    final dayName = days[date.weekday % 7];
+    final day = date.day.toString().padLeft(2, '0');
+    final month = months[date.month - 1];
+    final year = date.year;
+    return '$dayName, $day/$month/$year';
+  }
+
+  void _showWalletPicker(
+    BuildContext context,
+    List<Map<String, dynamic>> wallets,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        minChildSize: 0.4,
+        expand: false,
+        builder: (context, scrollController) => Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 8),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Pilih Dompet',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView.builder(
+                controller: scrollController,
+                itemCount: wallets.length,
+                itemBuilder: (context, index) {
+                  final wallet = wallets[index];
+                  final isSelected = _walletId == wallet['id'];
+                  final isDefault = wallet['isDefault'] == true;
+                  return InkWell(
+                    onTap: () {
+                      setState(() => _walletId = wallet['id'] as String);
+                      Navigator.pop(context);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? Theme.of(context).primaryColor.withOpacity(0.1)
+                            : null,
+                      ),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            backgroundColor: isSelected
+                                ? Theme.of(context).primaryColor
+                                : Colors.orange.shade100,
+                            radius: 24,
+                            child: Text(
+                              wallet['icon']?.toString() ?? '💰',
+                              style: const TextStyle(fontSize: 24),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  wallet['name'] ?? 'Dompet',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w600
+                                        : FontWeight.w400,
+                                  ),
+                                ),
+                                if (isDefault) ...[
+                                  const SizedBox(height: 4),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.shade100,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text(
+                                      'Default',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.green,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          if (isSelected)
+                            Icon(
+                              Icons.check_circle,
+                              color: Theme.of(context).primaryColor,
+                              size: 24,
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Event Picker
+  void _showEventPicker(
+    BuildContext context,
+    List<Map<String, dynamic>> events,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Pilih Acara',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const Divider(height: 24),
+            // Opsi: Tidak ada acara
+            InkWell(
+              onTap: () {
+                setState(() => _eventId = null);
+                Navigator.pop(context);
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: _eventId == null
+                      ? Theme.of(context).primaryColor.withOpacity(0.1)
+                      : null,
+                ),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: _eventId == null
+                          ? Theme.of(context).primaryColor
+                          : Colors.grey[300],
+                      radius: 24,
+                      child: Icon(
+                        Icons.block,
+                        color: _eventId == null
+                            ? Colors.white
+                            : Colors.grey[600],
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    const Expanded(
+                      child: Text(
+                        'Tanpa Acara',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    if (_eventId == null)
+                      Icon(
+                        Icons.check_circle,
+                        color: Theme.of(context).primaryColor,
+                        size: 24,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            // List events
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: events.length,
+                itemBuilder: (context, index) {
+                  final event = events[index];
+                  final isSelected = _eventId == event['id'];
+                  return InkWell(
+                    onTap: () {
+                      setState(() => _eventId = event['id'] as String);
+                      Navigator.pop(context);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? Theme.of(context).primaryColor.withOpacity(0.1)
+                            : null,
+                      ),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            backgroundColor: isSelected
+                                ? Theme.of(context).primaryColor
+                                : Colors.purple.shade100,
+                            radius: 24,
+                            child: Icon(
+                              Icons.event,
+                              color: isSelected
+                                  ? Colors.white
+                                  : Colors.purple.shade700,
+                              size: 24,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        event['name'] ?? 'Acara',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: isSelected
+                                              ? FontWeight.w600
+                                              : FontWeight.w400,
+                                        ),
+                                      ),
+                                    ),
+                                    if (event['isActive'] == true)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.green,
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'AKTIF',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                if (event['description'] != null &&
+                                    (event['description'] as String).isNotEmpty)
+                                  Text(
+                                    event['description'],
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey[600],
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                              ],
+                            ),
+                          ),
+                          if (isSelected)
+                            Icon(
+                              Icons.check_circle,
+                              color: Theme.of(context).primaryColor,
+                              size: 24,
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getEventName(String eventId, List<Map<String, dynamic>> events) {
+    try {
+      final event = events.firstWhere((e) => e['id'] == eventId);
+      return event['name'] ?? 'Acara';
+    } catch (e) {
+      return 'Acara';
+    }
+  }
+
+  IconData _getCategoryIcon(String categoryName) {
+    final name = categoryName.toLowerCase();
+    if (name.contains('makanan') || name.contains('makan')) {
+      return Icons.restaurant;
+    } else if (name.contains('minuman')) {
+      return Icons.local_cafe;
+    } else if (name.contains('transportasi') || name.contains('transport')) {
+      return Icons.directions_car;
+    } else if (name.contains('belanja') || name.contains('shopping')) {
+      return Icons.shopping_cart;
+    } else if (name.contains('hiburan') || name.contains('entertainment')) {
+      return Icons.movie;
+    } else if (name.contains('kesehatan') || name.contains('health')) {
+      return Icons.local_hospital;
+    } else if (name.contains('pendidikan') || name.contains('education')) {
+      return Icons.school;
+    } else if (name.contains('tagihan') || name.contains('bill')) {
+      return Icons.receipt_long;
+    } else if (name.contains('gaji') || name.contains('salary')) {
+      return Icons.paid;
+    } else if (name.contains('bonus')) {
+      return Icons.card_giftcard;
+    } else if (name.contains('investasi')) {
+      return Icons.trending_up;
+    } else {
+      return Icons.category;
+    }
+  }
+
+  // Helper function to convert icon name string to IconData
+  IconData? _getIconDataFromString(String iconName) {
+    final iconMap = <String, IconData>{
+      'restaurant': Icons.restaurant,
+      'local_cafe': Icons.local_cafe,
+      'shopping_cart': Icons.shopping_cart,
+      'local_mall': Icons.local_mall,
+      'directions_car': Icons.directions_car,
+      'local_gas_station': Icons.local_gas_station,
+      'home': Icons.home,
+      'bolt': Icons.bolt,
+      'water_drop': Icons.water_drop,
+      'phone_android': Icons.phone_android,
+      'wifi': Icons.wifi,
+      'school': Icons.school,
+      'local_hospital': Icons.local_hospital,
+      'fitness_center': Icons.fitness_center,
+      'movie': Icons.movie,
+      'sports_esports': Icons.sports_esports,
+      'card_giftcard': Icons.card_giftcard,
+      'pets': Icons.pets,
+      'child_care': Icons.child_care,
+      'work': Icons.work,
+      'account_balance': Icons.account_balance,
+      'attach_money': Icons.attach_money,
+      'savings': Icons.savings,
+      'trending_up': Icons.trending_up,
+      'store': Icons.store,
+      'volunteer_activism': Icons.volunteer_activism,
+      'handshake': Icons.handshake,
+      'redeem': Icons.redeem,
+      'flight': Icons.flight,
+      'hotel': Icons.hotel,
+      'beach_access': Icons.beach_access,
+      'attractions': Icons.attractions,
+      'local_activity': Icons.local_activity,
+      'celebration': Icons.celebration,
+      'cake': Icons.cake,
+      'flatware': Icons.flatware,
+      'emoji_food_beverage': Icons.emoji_food_beverage,
+      'local_pizza': Icons.local_pizza,
+      'icecream': Icons.icecream,
+      'ramen_dining': Icons.ramen_dining,
+      'local_bar': Icons.local_bar,
+      'lunch_dining': Icons.lunch_dining,
+      'dinner_dining': Icons.dinner_dining,
+      'fastfood': Icons.fastfood,
+      'liquor': Icons.liquor,
+      'coffee': Icons.coffee,
+      'nightlife': Icons.nightlife,
+      'brunch_dining': Icons.brunch_dining,
+      'bakery_dining': Icons.bakery_dining,
+      'receipt_long': Icons.receipt_long,
+      'paid': Icons.paid,
+      'category': Icons.category,
+      'payments': Icons.payments,
+      'credit_card': Icons.credit_card,
+      'account_balance_wallet': Icons.account_balance_wallet,
+    };
+
+    return iconMap[iconName];
+  }
+
+  Color _getCategoryColor(String categoryName) {
+    final name = categoryName.toLowerCase();
+    if (name.contains('makanan') || name.contains('makan')) {
+      return Colors.orange;
+    } else if (name.contains('minuman')) {
+      return Colors.brown;
+    } else if (name.contains('transportasi') || name.contains('transport')) {
+      return Colors.blue;
+    } else if (name.contains('belanja') || name.contains('shopping')) {
+      return Colors.purple;
+    } else if (name.contains('hiburan') || name.contains('entertainment')) {
+      return Colors.pink;
+    } else if (name.contains('kesehatan') || name.contains('health')) {
+      return Colors.red;
+    } else if (name.contains('pendidikan') || name.contains('education')) {
+      return Colors.indigo;
+    } else if (name.contains('tagihan') || name.contains('bill')) {
+      return Colors.amber;
+    } else if (name.contains('gaji') || name.contains('salary')) {
+      return Colors.green;
+    } else if (name.contains('bonus')) {
+      return Colors.teal;
+    } else if (name.contains('investasi')) {
+      return Colors.cyan;
+    } else {
+      return Colors.grey;
+    }
+  }
+
+  void _showCategoryPicker(
+    BuildContext context,
+    List<Map<String, dynamic>> cats,
+    Map<String, Map<String, dynamic>> catsIndex,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => _CategoryPickerSheet(
+        cats: cats,
+        catsIndex: catsIndex,
+        selectedCategoryId: _categoryId,
+        initialType: _type,
+        onCategorySelected: (categoryId, type) {
+          setState(() {
+            _categoryId = categoryId;
+            _type = type;
+          });
+        },
+        getCategoryIcon: _getCategoryIcon,
+        getCategoryColor: _getCategoryColor,
+      ),
+    );
+  }
+}
+
+// Category Picker Sheet Widget with Tabs
+class _CategoryPickerSheet extends StatefulWidget {
+  final List<Map<String, dynamic>> cats;
+  final Map<String, Map<String, dynamic>> catsIndex;
+  final String? selectedCategoryId;
+  final TransactionType initialType;
+  final Function(String categoryId, TransactionType type) onCategorySelected;
+  final IconData Function(String) getCategoryIcon;
+  final Color Function(String) getCategoryColor;
+
+  const _CategoryPickerSheet({
+    required this.cats,
+    required this.catsIndex,
+    required this.selectedCategoryId,
+    required this.initialType,
+    required this.onCategorySelected,
+    required this.getCategoryIcon,
+    required this.getCategoryColor,
+  });
+
+  @override
+  State<_CategoryPickerSheet> createState() => _CategoryPickerSheetState();
+}
+
+class _CategoryPickerSheetState extends State<_CategoryPickerSheet>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  late TransactionType _currentType;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentType = widget.initialType;
+    _tabController = TabController(
+      length: 3,
+      vsync: this,
+      initialIndex: _currentType == TransactionType.expense ? 0 : 1,
+    );
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) {
+        setState(() {
+          if (_tabController.index == 0) {
+            _currentType = TransactionType.expense;
+          } else if (_tabController.index == 1) {
+            _currentType = TransactionType.income;
+          } else {
+            _currentType = TransactionType.expense; // For debt/loan
+          }
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  // Helper function to convert icon name string to IconData
+  IconData? _getIconDataFromString(String iconName) {
+    final iconMap = <String, IconData>{
+      'restaurant': Icons.restaurant,
+      'local_cafe': Icons.local_cafe,
+      'shopping_cart': Icons.shopping_cart,
+      'local_mall': Icons.local_mall,
+      'directions_car': Icons.directions_car,
+      'local_gas_station': Icons.local_gas_station,
+      'home': Icons.home,
+      'bolt': Icons.bolt,
+      'water_drop': Icons.water_drop,
+      'phone_android': Icons.phone_android,
+      'wifi': Icons.wifi,
+      'school': Icons.school,
+      'local_hospital': Icons.local_hospital,
+      'fitness_center': Icons.fitness_center,
+      'movie': Icons.movie,
+      'sports_esports': Icons.sports_esports,
+      'card_giftcard': Icons.card_giftcard,
+      'pets': Icons.pets,
+      'child_care': Icons.child_care,
+      'work': Icons.work,
+      'account_balance': Icons.account_balance,
+      'attach_money': Icons.attach_money,
+      'savings': Icons.savings,
+      'trending_up': Icons.trending_up,
+      'store': Icons.store,
+      'volunteer_activism': Icons.volunteer_activism,
+      'handshake': Icons.handshake,
+      'redeem': Icons.redeem,
+      'flight': Icons.flight,
+      'hotel': Icons.hotel,
+      'beach_access': Icons.beach_access,
+      'attractions': Icons.attractions,
+      'local_activity': Icons.local_activity,
+      'celebration': Icons.celebration,
+      'cake': Icons.cake,
+      'flatware': Icons.flatware,
+      'emoji_food_beverage': Icons.emoji_food_beverage,
+      'local_pizza': Icons.local_pizza,
+      'icecream': Icons.icecream,
+      'ramen_dining': Icons.ramen_dining,
+      'local_bar': Icons.local_bar,
+      'lunch_dining': Icons.lunch_dining,
+      'dinner_dining': Icons.dinner_dining,
+      'fastfood': Icons.fastfood,
+      'liquor': Icons.liquor,
+      'coffee': Icons.coffee,
+      'nightlife': Icons.nightlife,
+      'brunch_dining': Icons.brunch_dining,
+      'bakery_dining': Icons.bakery_dining,
+      'receipt_long': Icons.receipt_long,
+      'paid': Icons.paid,
+      'category': Icons.category,
+      'payments': Icons.payments,
+      'credit_card': Icons.credit_card,
+      'account_balance_wallet': Icons.account_balance_wallet,
+    };
+
+    return iconMap[iconName];
+  }
+
+  List<Map<String, dynamic>> _getFilteredCategories() {
+    String need;
+    if (_tabController.index == 0) {
+      need = 'expense'; // Pengeluaran
+    } else if (_tabController.index == 1) {
+      need = 'income'; // Pemasukan
+    } else {
+      need = 'debt'; // Hutang/Pinjaman - bisa custom filter
+    }
+
+    return widget.cats.where((m) {
+      final applies = (m['applies'] as String?) ?? (m['type'] as String?);
+
+      // For debt/loan tab, show both or specific debt categories
+      if (_tabController.index == 2) {
+        final name = (m['name'] ?? '').toString().toLowerCase();
+        return applies == 'both' ||
+            applies == 'debt' ||
+            name.contains('hutang') ||
+            name.contains('pinjaman') ||
+            name.contains('utang');
+      }
+
+      return applies == 'both' || applies == need;
+    }).toList();
+  }
+
+  Map<String?, List<Map<String, dynamic>>> _groupCategories(
+    List<Map<String, dynamic>> filteredCats,
+  ) {
+    final Map<String?, List<Map<String, dynamic>>> groupedCats = {};
+    for (final cat in filteredCats) {
+      final pid = cat['parentId'] as String?;
+      if (!groupedCats.containsKey(pid)) {
+        groupedCats[pid] = [];
+      }
+      groupedCats[pid]!.add(cat);
+    }
+    return groupedCats;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filteredCats = _getFilteredCategories();
+    final groupedCats = _groupCategories(filteredCats);
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.75,
+      maxChildSize: 0.95,
+      minChildSize: 0.5,
+      expand: false,
+      builder: (context, scrollController) => Column(
+        children: [
+          // Handle
+          Container(
+            margin: const EdgeInsets.only(top: 12, bottom: 8),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          // Header with back, title, menu, and search
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                InkWell(
+                  onTap: () => Navigator.pop(context),
+                  borderRadius: BorderRadius.circular(8),
+                  child: const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Row(
+                      children: [
+                        Icon(Icons.arrow_back_ios, size: 18),
+                        SizedBox(width: 4),
+                        Text('Kembali', style: TextStyle(fontSize: 16)),
+                      ],
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                const Text(
+                  'Pilih Kategori',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const Spacer(),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.menu),
+                      onPressed: () {
+                        // TODO: Show category management menu
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.search),
+                      onPressed: () {
+                        // TODO: Show search dialog
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // Tabs
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.grey[200],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: TabBar(
+              controller: _tabController,
+              indicator: BoxDecoration(
+                color: Theme.of(context).primaryColor,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.grey[700],
+              labelStyle: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+              unselectedLabelStyle: const TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: 13,
+              ),
+              indicatorSize: TabBarIndicatorSize.tab,
+              dividerColor: Colors.transparent,
+              tabs: const [
+                Tab(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4),
+                    child: Text('Pengeluaran'),
+                  ),
+                ),
+                Tab(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4),
+                    child: Text('Pemasukan'),
+                  ),
+                ),
+                Tab(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4),
+                    child: Text('Hutang/Pinjaman'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Divider(height: 1),
+          // Categories List
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                // Pengeluaran
+                _buildCategoryList(groupedCats, scrollController),
+                // Pemasukan
+                _buildCategoryList(groupedCats, scrollController),
+                // Hutang/Pinjaman
+                _buildCategoryList(groupedCats, scrollController),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryList(
+    Map<String?, List<Map<String, dynamic>>> groupedCats,
+    ScrollController scrollController,
+  ) {
+    return ListView(
+      controller: scrollController,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      children: [
+        // Kategori Baru Button
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: InkWell(
+            onTap: () async {
+              Navigator.pop(context); // Close category picker first
+
+              // Kelola kategori pada layar Pengaturan
+              await Navigator.pushNamed(context, '/categories');
+              // Setelah kembali, user akan tetap di form transaksi
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[300]!),
+              ),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: Colors.blue.shade100,
+                    radius: 20,
+                    child: Icon(
+                      Icons.settings,
+                      color: Colors.blue.shade700,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Kelola kategori',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.blue.shade700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        ...groupedCats.entries.where((e) => e.key == null).expand((entry) {
+          // Sort parent categories: prioritize names containing 'makanan' or 'minuman'
+          final parents = List<Map<String, dynamic>>.from(entry.value);
+          parents.sort((a, b) {
+            final an = (a['name'] ?? '').toString().toLowerCase();
+            final bn = (b['name'] ?? '').toString().toLowerCase();
+            final aTop = an.contains('makanan') || an.contains('minuman');
+            final bTop = bn.contains('makanan') || bn.contains('minuman');
+            if (aTop && !bTop) return -1;
+            if (!aTop && bTop) return 1;
+            return an.compareTo(bn);
+          });
+          return parents.map((parentCat) {
+            final parentId = parentCat['id'] as String;
+            final parentName = (parentCat['name'] ?? 'Kategori') as String;
+            final children = groupedCats[parentId] ?? [];
+
+            // Get icon dari Firebase untuk parent category
+            final parentIconName = parentCat['icon'] as String?;
+            bool isParentEmoji = false;
+            IconData icon = widget.getCategoryIcon(parentName); // default
+
+            if (parentIconName != null && parentIconName.isNotEmpty) {
+              // Coba convert ke Material Icon terlebih dahulu
+              final iconFromFirebase = _getIconDataFromString(parentIconName);
+              if (iconFromFirebase != null) {
+                // Ini adalah nama icon Material yang valid
+                icon = iconFromFirebase;
+              } else {
+                // Bukan icon Material, anggap sebagai emoji atau text
+                isParentEmoji = true;
+              }
+            }
+
+            // Get color dari Firebase untuk parent category
+            Color color = widget.getCategoryColor(parentName); // default
+            final parentColorStr = parentCat['color'] as String?;
+            if (parentColorStr != null && parentColorStr.isNotEmpty) {
+              try {
+                final colorValue = int.parse(
+                  parentColorStr.replaceAll('#', ''),
+                  radix: 16,
+                );
+                color = Color(colorValue);
+              } catch (e) {
+                // Keep default color
+              }
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Parent Category
+                InkWell(
+                  onTap: () {
+                    widget.onCategorySelected(parentId, _currentType);
+                    Navigator.pop(context);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: widget.selectedCategoryId == parentId
+                          ? Theme.of(context).primaryColor.withOpacity(0.1)
+                          : null,
+                    ),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          backgroundColor: widget.selectedCategoryId == parentId
+                              ? Theme.of(context).primaryColor
+                              : color.withOpacity(0.2),
+                          radius: 24,
+                          child: isParentEmoji
+                              ? Text(
+                                  parentIconName ?? '',
+                                  style: const TextStyle(fontSize: 24),
+                                )
+                              : Icon(
+                                  icon,
+                                  color: widget.selectedCategoryId == parentId
+                                      ? Colors.white
+                                      : color,
+                                  size: 24,
+                                ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Text(
+                            parentName,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: widget.selectedCategoryId == parentId
+                                  ? FontWeight.w600
+                                  : FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        if (widget.selectedCategoryId == parentId)
+                          Icon(
+                            Icons.check_circle,
+                            color: Theme.of(context).primaryColor,
+                            size: 24,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                // Children Categories (prioritize 'makanan'/'minuman')
+                if (children.isNotEmpty)
+                  ...(() {
+                    final list = List<Map<String, dynamic>>.from(children);
+                    list.sort((a, b) {
+                      final an = (a['name'] ?? '').toString().toLowerCase();
+                      final bn = (b['name'] ?? '').toString().toLowerCase();
+                      final aTop =
+                          an.contains('makanan') || an.contains('minuman');
+                      final bTop =
+                          bn.contains('makanan') || bn.contains('minuman');
+                      if (aTop && !bTop) return -1;
+                      if (!aTop && bTop) return 1;
+                      return an.compareTo(bn);
+                    });
+                    return list;
+                  }()).map((child) {
+                    final childId = child['id'] as String;
+                    final childName = (child['name'] ?? '') as String;
+                    final isSelected = widget.selectedCategoryId == childId;
+
+                    // Get icon dari Firebase untuk subcategory
+                    final childIconName = child['icon'] as String?;
+                    bool isEmoji = false;
+                    IconData childIcon =
+                        Icons.category_outlined; // Default icon
+
+                    if (childIconName != null && childIconName.isNotEmpty) {
+                      // Coba convert ke Material Icon terlebih dahulu
+                      final iconFromFirebase = _getIconDataFromString(
+                        childIconName,
+                      );
+                      if (iconFromFirebase != null) {
+                        // Ini adalah nama icon Material yang valid
+                        childIcon = iconFromFirebase;
+                      } else {
+                        // Bukan icon Material, anggap sebagai emoji atau text
+                        isEmoji = true;
+                      }
+                    }
+
+                    // Get color dari Firebase untuk subcategory
+                    Color childColor = color; // Default to parent color
+                    final childColorStr = child['color'] as String?;
+                    if (childColorStr != null && childColorStr.isNotEmpty) {
+                      try {
+                        final colorValue = int.parse(
+                          childColorStr.replaceAll('#', ''),
+                          radix: 16,
+                        );
+                        childColor = Color(colorValue);
+                      } catch (e) {
+                        // Keep parent color
+                      }
+                    }
+
+                    return InkWell(
+                      onTap: () {
+                        widget.onCategorySelected(childId, _currentType);
+                        Navigator.pop(context);
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Container(
+                          padding: const EdgeInsets.only(
+                            left: 50,
+                            right: 0,
+                            top: 0,
+                            bottom: 0,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? Theme.of(
+                                    context,
+                                  ).primaryColor.withOpacity(0.08)
+                                : null,
+                          ),
+                          child: Row(
+                            children: [
+                              // Tampilkan icon subcategory
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? Theme.of(
+                                          context,
+                                        ).primaryColor.withOpacity(0.15)
+                                      : childColor.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Center(
+                                  child: isEmoji
+                                      ? Text(
+                                          childIconName ?? '',
+                                          style: const TextStyle(fontSize: 20),
+                                        )
+                                      : Icon(
+                                          childIcon,
+                                          color: isSelected
+                                              ? Theme.of(context).primaryColor
+                                              : childColor,
+                                          size: 20,
+                                        ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  childName,
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: isSelected
+                                        ? FontWeight.w500
+                                        : FontWeight.w400,
+                                    color: isSelected
+                                        ? Theme.of(context).primaryColor
+                                        : Colors.black87,
+                                  ),
+                                ),
+                              ),
+                              if (isSelected)
+                                Icon(
+                                  Icons.check,
+                                  color: Theme.of(context).primaryColor,
+                                  size: 20,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                const Divider(height: 1, indent: 16),
+              ],
+            );
+          });
+        }),
+      ],
+    );
+  }
+}

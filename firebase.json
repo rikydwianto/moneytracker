@@ -1,0 +1,28 @@
+{
+  "database": {
+    "rules": "database.rules.json"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "moneytracker-d2a02",
+          "appId": "1:427662349355:android:c385d87a1fa5c1c722066e",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "moneytracker-d2a02",
+          "configurations": {
+            "android": "1:427662349355:android:c385d87a1fa5c1c722066e",
+            "ios": "1:427662349355:ios:7a3dbd20bfac5b1a22066e",
+            "macos": "1:427662349355:ios:7a3dbd20bfac5b1a22066e",
+            "web": "1:427662349355:web:f9e0c7de24f2881d22066e",
+            "windows": "1:427662349355:web:0cbc0cc9a2fe755522066e"
+          }
+        }
+      }
+    }
+  }
+}

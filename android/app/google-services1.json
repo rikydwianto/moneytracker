@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "427662349355",
+    "project_id": "moneytracker-d2a02",
+    "storage_bucket": "moneytracker-d2a02.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:427662349355:android:c385d87a1fa5c1c722066e",
+        "android_client_info": {
+          "package_name": "com.moneytracker.money_tracker"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBQvuReIyZZbPz3eXC_Qgd9YCWh6uajwzM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

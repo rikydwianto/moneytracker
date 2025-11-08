@@ -1,0 +1,19 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid",
+        "notifications": {
+          ".indexOn": ["isRead"]
+        },
+        "transactions": {
+          ".indexOn": ["date", "walletId", "type", "category"]
+        },
+        "wallets": {
+          ".indexOn": ["isDefault", "type"]
+        }
+      }
+    }
+  }
+}
