@@ -1,6 +1,7 @@
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../models/notification_model.dart';
 
@@ -238,12 +239,24 @@ class NotificationService {
 
   // ========== PERSISTENT NOTIFICATION (TIDAK BISA DIHAPUS) ==========
 
-  /// Initialize local notifications
+  /// Initialize local notifications (Android & iOS only; web skipped gracefully)
   Future<void> initializeLocalNotifications() async {
-    const androidSettings = AndroidInitializationSettings(
-      '@mipmap/ic_launcher',
+    if (kIsWeb) {
+      // flutter_local_notifications tidak mendukung web; kita lewati supaya tidak error.
+      _initialized = true; // tandai supaya tidak inisialisasi ulang
+      return;
+    }
+
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const iosSettings = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
     );
-    const initSettings = InitializationSettings(android: androidSettings);
+    const initSettings = InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
+    );
 
     await _localNotifications.initialize(
       initSettings,
@@ -261,9 +274,7 @@ class NotificationService {
             currency: 'IDR',
           );
         }
-        print(
-          '[NOTIFICATION] interaction payload=${response.payload} action=${response.actionId}',
-        );
+        debugPrint('[NOTIFICATION] interaction payload=${response.payload} action=${response.actionId}');
       },
     );
     _initialized = true;
@@ -278,6 +289,10 @@ class NotificationService {
     String? payload,
     List<AndroidNotificationAction>? actions,
   }) async {
+    if (kIsWeb) {
+      // Web tidak didukung; cukup abaikan pemanggilan supaya tidak crash.
+      return;
+    }
     final androidDetails = AndroidNotificationDetails(
       'persistent_channel', // Channel ID
       'Persistent Notifications', // Channel name
@@ -309,6 +324,10 @@ class NotificationService {
     required double totalBalance,
     required String currency,
   }) async {
+    if (kIsWeb) {
+      // Skip on web; bisa diganti dengan in-app banner di masa depan.
+      return;
+    }
     final formatted = _formatAmount(totalBalance);
     await showPersistentNotification(
       id: 2001,
@@ -389,6 +408,7 @@ class NotificationService {
       if (!_initialized) {
         await initializeLocalNotifications();
       }
+      if (kIsWeb) return; // Tidak ada persistent notification di web
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
       final enabledSnap = await _database

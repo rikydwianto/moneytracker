@@ -45,5 +45,12 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Privacy permissions for common features used by the app -->
+	<key>NSCameraUsageDescription</key>
+	<string>Kami membutuhkan akses Kamera untuk mengambil foto struk atau dokumen transaksi.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Kami membutuhkan akses Foto untuk memilih gambar dari galeri.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Izinkan Face ID untuk membuka kunci aplikasi dengan App Lock.</string>
 </dict>
 </plist>
