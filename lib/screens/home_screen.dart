@@ -138,7 +138,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: _pages[_selectedIndex],
+  body: _pages[_selectedIndex],
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (int index) {
@@ -174,22 +174,96 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      floatingActionButton: _selectedIndex == 3
-          ? FloatingActionButton.extended(
-              onPressed: () async {
-                final result = await Navigator.of(
-                  context,
-                ).pushNamed('/add-debt');
-                if (result == true && context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Hutang/Piutang disimpan')),
-                  );
-                }
-              },
-              icon: const Icon(Icons.add),
-              label: const Text('Catat Hutang/Piutang'),
-            )
-          : null,
+      floatingActionButton: _buildDraggableFab(context),
+    );
+  }
+
+  // Draggable FAB that can toggle between debt add and mini apps shortcut
+  Widget _buildDraggableFab(BuildContext context) {
+    // Only show on main tabs (hide if not authenticated implicitly via parent) - always visible.
+    return _DraggableFab(
+      initialOffset: const Offset(20, 520),
+      builder: (fabContext) {
+        // Mode based on selected index: Debt page shows Add Debt, others Mini Apps.
+        final isDebtTab = _selectedIndex == 3;
+        return FloatingActionButton.extended(
+          heroTag: 'global-draggable-fab',
+          onPressed: () async {
+            if (isDebtTab) {
+              final result = await Navigator.of(context).pushNamed('/add-debt');
+              if (result == true && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Hutang/Piutang disimpan')),
+                );
+              }
+            } else {
+              Navigator.of(context).pushNamed('/mini-apps');
+            }
+          },
+          icon: Icon(isDebtTab ? Icons.add : Icons.grid_view),
+          label: Text(isDebtTab ? 'Hutang/Piutang' : 'Mini Apps'),
+        );
+      },
+    );
+  }
+}
+
+// Reusable draggable wrapper
+class _DraggableFab extends StatefulWidget {
+  final Offset initialOffset;
+  final WidgetBuilder builder;
+  const _DraggableFab({required this.initialOffset, required this.builder});
+
+  @override
+  State<_DraggableFab> createState() => _DraggableFabState();
+}
+
+class _DraggableFabState extends State<_DraggableFab> {
+  late Offset offset;
+
+  @override
+  void initState() {
+    super.initState();
+    offset = widget.initialOffset;
+  }
+
+  void _onPanUpdate(DragUpdateDetails details) {
+    setState(() {
+      offset += details.delta;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxX = constraints.maxWidth - 80; // approximate FAB width
+        final maxY = constraints.maxHeight - 80; // approximate FAB height
+        // Clamp position to viewport
+        final clamped = Offset(
+          offset.dx.clamp(8, maxX),
+          offset.dy.clamp(8, maxY),
+        );
+        offset = clamped;
+
+        return Stack(
+          children: [
+            Positioned(
+              left: clamped.dx,
+              top: clamped.dy,
+              child: GestureDetector(
+                onPanUpdate: _onPanUpdate,
+                child: Material(
+                  elevation: 6,
+                  shape: const StadiumBorder(),
+                  shadowColor: Colors.black54,
+                  child: widget.builder(context),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -1140,7 +1214,8 @@ class _WalletSelectionSheet extends StatelessWidget {
                   );
                 }
 
-                final data = snapshot.data!.snapshot.value as Map<dynamic, dynamic>;
+                final data =
+                    snapshot.data!.snapshot.value as Map<dynamic, dynamic>;
                 final entries = data.entries.toList();
 
                 // Build list of wallet models for callback use
@@ -1154,7 +1229,8 @@ class _WalletSelectionSheet extends StatelessWidget {
                   itemCount: entries.length,
                   itemBuilder: (context, index) {
                     final entry = entries[index];
-                    final rawMap = (entry.value as Map).cast<dynamic, dynamic>();
+                    final rawMap = (entry.value as Map)
+                        .cast<dynamic, dynamic>();
                     final wallet = Wallet.fromRtdb(entry.key, rawMap);
                     final isHidden = (rawMap['isHidden'] as bool?) ?? false;
                     return Card(

@@ -9,7 +9,7 @@ import 'services/notification_service.dart';
 import 'screens/splash_screen.dart';
 // Removed direct HomeScreen import; shown via AppLockGate
 import 'screens/auth/auth_screen.dart';
-import 'screens/transaction/transaction_form_screen.dart';
+import 'screens/transaction/transaction_form_screen_new.dart';
 import 'screens/transaction/transaction_detail_screen.dart';
 import 'screens/wallet/wallet_form_screen.dart';
 import 'screens/wallet/wallets_manage_screen.dart';
@@ -21,6 +21,7 @@ import 'screens/event/events_screen.dart';
 import 'screens/debug/app_check_debug_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/persistent_notification_screen.dart';
+import 'screens/mini_apps/mini_apps_screen.dart';
 import 'screens/wallet/wallet_detail_screen.dart';
 import 'screens/wallet/transfer_screen.dart';
 import 'screens/wallet/transfer_across_screen.dart';
@@ -55,32 +56,32 @@ void main() async {
 
   // Initialize Firebase App Check with conditional loading
   if (ENABLE_APP_CHECK) {
-  // App Check init
+    // App Check init
     try {
-  // Attempting App Check activate
+      // Attempting App Check activate
 
       await FirebaseAppCheck.instance.activate(
         androidProvider: AndroidProvider.debug,
         appleProvider: AppleProvider.debug,
       );
 
-  // App Check activated
+      // App Check activated
 
       // Test token retrieval
       try {
-  await FirebaseAppCheck.instance.getToken();
-  // Token obtained (value ignored intentionally)
+        await FirebaseAppCheck.instance.getToken();
+        // Token obtained (value ignored intentionally)
       } catch (tokenError) {
-  // Token error
+        // Token error
       }
     } catch (e) {
-  debugPrint('[ERROR] Firebase App Check activation failed: $e');
+      debugPrint('[ERROR] Firebase App Check activation failed: $e');
 
       // Additional debug info
-  // Debug context removed
+      // Debug context removed
     }
   } else {
-  // App Check disabled
+    // App Check disabled
   }
 
   // Initialize Hive for offline storage
@@ -190,6 +191,7 @@ class _MyAppState extends State<MyApp> {
                   as Map<String, dynamic>;
           return AdjustBalanceScreen(wallet: args['wallet'] as Wallet);
         },
+        '/mini-apps': (context) => const MiniAppsScreen(),
       },
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
@@ -251,7 +253,9 @@ class _MyAppState extends State<MyApp> {
               }
 
               if (initSnapshot.hasError) {
-                debugPrint('[ERROR] User initialization error: ${initSnapshot.error}');
+                debugPrint(
+                  '[ERROR] User initialization error: ${initSnapshot.error}',
+                );
                 return Scaffold(
                   body: Center(
                     child: Column(
