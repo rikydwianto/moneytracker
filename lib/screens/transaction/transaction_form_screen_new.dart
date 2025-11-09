@@ -363,6 +363,19 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
                               ),
                         );
 
+                  // Auto-select an active event if present and nothing selected yet
+                  if (_eventId == null) {
+                    final active =
+                        events.where((e) => e['isActive'] == true).toList();
+                    if (active.isNotEmpty) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted && _eventId == null) {
+                          setState(() => _eventId = active.first['id'] as String);
+                        }
+                      });
+                    }
+                  }
+
                   return Form(
                     key: _formKey,
                     child: Column(
