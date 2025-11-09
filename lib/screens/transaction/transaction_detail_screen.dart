@@ -109,6 +109,9 @@ class TransactionDetailScreen extends StatelessWidget {
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
         eventId: transaction.eventId,
+        withPerson: transaction.withPerson,
+        location: transaction.location,
+        reminderAt: transaction.reminderAt,
       );
 
       await TransactionService().add(user.uid, duplicatedTx);
@@ -129,6 +132,23 @@ class TransactionDetailScreen extends StatelessWidget {
         ).showSnackBar(SnackBar(content: Text('Gagal menduplikat: $e')));
       }
     }
+  }
+
+  Future<Map<String, dynamic>?> _getEventDetails(
+    String userId,
+    String eventId,
+  ) async {
+    try {
+      final snapshot =
+          await FirebaseDatabase.instance.ref('users/$userId/events/$eventId').get();
+      if (snapshot.exists) {
+        final data = snapshot.value as Map;
+        return data.cast<String, dynamic>();
+      }
+    } catch (e) {
+      debugPrint('Error getting event: $e');
+    }
+    return null;
   }
 
   IconData _getCategoryIcon(String categoryName) {
@@ -257,10 +277,21 @@ class TransactionDetailScreen extends StatelessWidget {
               future: Future.wait([
                 _getCategoryDetails(user.uid, transaction.categoryId),
                 _getWalletDetails(user.uid, transaction.walletId),
+                if (transaction.eventId != null)
+                  _getEventDetails(user.uid, transaction.eventId!)
+                else
+                  Future.value(null),
               ]),
               builder: (context, snapshot) {
-                final categoryData = snapshot.data?.first;
-                final walletData = snapshot.data?.last;
+                final categoryData = snapshot.data != null && snapshot.data!.isNotEmpty
+                    ? snapshot.data![0]
+                    : null;
+                final walletData = snapshot.data != null && snapshot.data!.length >= 2
+                    ? snapshot.data![1]
+                    : null;
+                final eventData = snapshot.data != null && snapshot.data!.length >= 3
+                    ? snapshot.data![2]
+                    : null;
 
                 return SingleChildScrollView(
                   child: Column(
@@ -351,6 +382,15 @@ class TransactionDetailScreen extends StatelessWidget {
                                 value: walletData['name'] ?? 'Tidak ada',
                               ),
                             const Divider(height: 1),
+                            // Event
+                            if (eventData != null)
+                              _buildDetailRow(
+                                icon: Icons.event,
+                                iconColor: Colors.purple,
+                                label: 'Acara',
+                                value: eventData['name'] ?? 'Acara',
+                              ),
+                            const Divider(height: 1),
                             // Date
                             _buildDetailRow(
                               icon: Icons.calendar_today,
@@ -368,6 +408,40 @@ class TransactionDetailScreen extends StatelessWidget {
                                 transaction.date,
                               ),
                             ),
+                            const Divider(height: 1),
+                            // With Person
+                            if (transaction.withPerson != null &&
+                                transaction.withPerson!.isNotEmpty)
+                              _buildDetailRow(
+                                icon: Icons.people_outline,
+                                label: 'Dengan',
+                                value: transaction.withPerson!,
+                              ),
+                            if (transaction.withPerson != null &&
+                                transaction.withPerson!.isNotEmpty)
+                              const Divider(height: 1),
+                            // Location
+                            if (transaction.location != null &&
+                                transaction.location!.isNotEmpty)
+                              _buildDetailRow(
+                                icon: Icons.location_on_outlined,
+                                iconColor: Colors.redAccent,
+                                label: 'Lokasi',
+                                value: transaction.location!,
+                              ),
+                            if (transaction.location != null &&
+                                transaction.location!.isNotEmpty)
+                              const Divider(height: 1),
+                            // Reminder
+                            if (transaction.reminderAt != null)
+                              _buildDetailRow(
+                                icon: Icons.alarm,
+                                iconColor: Colors.teal,
+                                label: 'Pengingat',
+                                value: DateHelpers.dateTime.format(
+                                  transaction.reminderAt!,
+                                ),
+                              ),
                             // Notes
                             if (transaction.notes != null &&
                                 transaction.notes!.isNotEmpty) ...[
@@ -382,6 +456,43 @@ class TransactionDetailScreen extends StatelessWidget {
                           ],
                         ),
                       ),
+
+                      // Photo preview
+                      if (transaction.photoUrl != null &&
+                          transaction.photoUrl!.isNotEmpty)
+                        Container(
+                          margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                                child: Text(
+                                  'Foto',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: AspectRatio(
+                                  aspectRatio: 16 / 9,
+                                  child: Image.network(
+                                    transaction.photoUrl!,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                            ],
+                          ),
+                        ),
 
                       const SizedBox(height: 16),
 
