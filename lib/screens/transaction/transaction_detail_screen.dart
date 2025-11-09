@@ -297,47 +297,176 @@ class TransactionDetailScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Amount Card
+                      // Amount Header (enhanced visual)
                       Container(
-                        margin: const EdgeInsets.all(16),
-                        padding: const EdgeInsets.all(24),
+                        margin: const EdgeInsets.fromLTRB(16, 16, 16, 12),
                         decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(28),
                           gradient: LinearGradient(
                             colors: isExpense
-                                ? [Colors.red.shade400, Colors.red.shade600]
+                                ? [
+                                    Colors.red.shade700,
+                                    Colors.red.shade400,
+                                  ]
                                 : [
+                                    Colors.green.shade700,
                                     Colors.green.shade400,
-                                    Colors.green.shade600,
                                   ],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
-                          borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
                               color: (isExpense ? Colors.red : Colors.green)
-                                  .withOpacity(0.3),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4),
+                                  .withOpacity(0.35),
+                              blurRadius: 18,
+                              offset: const Offset(0, 6),
                             ),
                           ],
                         ),
-                        child: Column(
+                        child: Stack(
                           children: [
-                            Text(
-                              isExpense ? 'Pengeluaran' : 'Pemasukan',
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
+                            // Decorative circles
+                            Positioned(
+                              top: -30,
+                              left: -10,
+                              child: Container(
+                                width: 100,
+                                height: 100,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.white.withOpacity(0.06),
+                                ),
                               ),
                             ),
-                            const SizedBox(height: 8),
-                            Text(
-                              IdrFormatters.format(transaction.amount),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 32,
-                                fontWeight: FontWeight.bold,
+                            Positioned(
+                              bottom: -20,
+                              right: -10,
+                              child: Container(
+                                width: 120,
+                                height: 120,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.white.withOpacity(0.04),
+                                ),
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: Colors.white.withOpacity(0.15),
+                                          border: Border.all(
+                                            color: Colors.white24,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          isExpense
+                                              ? Icons.arrow_downward
+                                              : Icons.arrow_upward,
+                                          color: Colors.white,
+                                          size: 22,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Text(
+                                        isExpense ? 'Pengeluaran' : 'Pemasukan',
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  ShaderMask(
+                                    shaderCallback: (rect) => LinearGradient(
+                                      colors: [
+                                        Colors.white,
+                                        Colors.white.withOpacity(0.85),
+                                      ],
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                    ).createShader(rect),
+                                    blendMode: BlendMode.srcIn,
+                                    child: AnimatedSwitcher(
+                                      duration: const Duration(milliseconds: 300),
+                                      child: Text(
+                                        IdrFormatters.format(transaction.amount),
+                                        key: ValueKey(transaction.amount),
+                                        style: const TextStyle(
+                                          fontSize: 36,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: -0.5,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 18),
+                                  // Horizontal scroll chips
+                                  SingleChildScrollView(
+                                    scrollDirection: Axis.horizontal,
+                                    child: Row(
+                                      children: [
+                                        if (categoryData != null)
+                                          Padding(
+                                            padding: const EdgeInsets.only(right: 8),
+                                            child: _buildChip(
+                                              label: categoryData['name'] ?? 'Kategori',
+                                              icon: _getCategoryIcon(
+                                                categoryData['name'] ?? '',
+                                              ),
+                                              color: _getCategoryColor(
+                                                categoryData['name'] ?? '',
+                                              ),
+                                              lightOnDark: true,
+                                            ),
+                                          ),
+                                        if (walletData != null)
+                                          Padding(
+                                            padding: const EdgeInsets.only(right: 8),
+                                            child: _buildChip(
+                                              label: walletData['name'] ?? 'Dompet',
+                                              icon: Icons.account_balance_wallet,
+                                              color: Colors.orange,
+                                              lightOnDark: true,
+                                            ),
+                                          ),
+                                        Padding(
+                                          padding: const EdgeInsets.only(right: 8),
+                                          child: _buildChip(
+                                            label: DateHelpers.dateTime.format(
+                                              transaction.date,
+                                            ),
+                                            icon: Icons.schedule,
+                                            color: Colors.blueGrey,
+                                            lightOnDark: true,
+                                          ),
+                                        ),
+                                        if (eventData != null)
+                                          Padding(
+                                            padding: const EdgeInsets.only(right: 8),
+                                            child: _buildChip(
+                                              label: eventData['name'] ?? 'Acara',
+                                              icon: Icons.event,
+                                              color: Colors.purple,
+                                              lightOnDark: true,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
@@ -349,10 +478,35 @@ class TransactionDetailScreen extends StatelessWidget {
                         margin: const EdgeInsets.symmetric(horizontal: 16),
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 12,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
                         ),
                         child: Column(
                           children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.info_outline,
+                                      color: Colors.blueGrey[400]),
+                                  const SizedBox(width: 8),
+                                  const Text(
+                                    'Rincian',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 0.2,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                             // Title
                             _buildDetailRow(
                               icon: Icons.title,
@@ -464,7 +618,14 @@ class TransactionDetailScreen extends StatelessWidget {
                           margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                           decoration: BoxDecoration(
                             color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 12,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -483,9 +644,15 @@ class TransactionDetailScreen extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(12),
                                 child: AspectRatio(
                                   aspectRatio: 16 / 9,
-                                  child: Image.network(
-                                    transaction.photoUrl!,
-                                    fit: BoxFit.cover,
+                                  child: GestureDetector(
+                                    onTap: () => _showPhotoViewer(
+                                      context,
+                                      transaction.photoUrl!,
+                                    ),
+                                    child: Image.network(
+                                      transaction.photoUrl!,
+                                      fit: BoxFit.cover,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -605,6 +772,84 @@ class TransactionDetailScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // Build a small info chip used in the header section
+  Widget _buildChip({
+    required String label,
+    required IconData icon,
+    required Color color,
+    bool lightOnDark = false,
+  }) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: lightOnDark ? Colors.white.withOpacity(0.15) : color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: lightOnDark ? Colors.white24 : color.withOpacity(0.25),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 16,
+            color: lightOnDark ? Colors.white : color,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: lightOnDark ? Colors.white : color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Show photo fullscreen dialog
+  void _showPhotoViewer(BuildContext context, String url) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (context) => GestureDetector(
+        onTap: () => Navigator.pop(context),
+        child: Stack(
+          children: [
+            Center(
+              child: InteractiveViewer(
+                minScale: 0.5,
+                maxScale: 4,
+                child: Hero(
+                  tag: url,
+                  child: AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: Image.network(url, fit: BoxFit.contain),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 40,
+              right: 20,
+              child: CircleAvatar(
+                backgroundColor: Colors.black54,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
