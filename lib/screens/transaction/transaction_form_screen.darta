@@ -1,9 +1,223 @@
-// Proxy file kept for backward compatibility.
-// The real implementation lives in `transaction_form_screen_new.dart`.
-// This file must remain minimal to avoid the previous corruption issues.
-export 'transaction_form_screen_new.dart';
+// Clean rebuilt transaction form screen
+import 'dart:io';
 
-// (Legacy content removed)
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
+
+import '../../models/event.dart';
+import '../../models/transaction.dart';
+import '../../services/event_service.dart';
+import '../../services/transaction_service.dart';
+import '../../services/wallet_service.dart';
+// This file now only re-exports the clean implementation to eliminate corruption.
+// All previous duplicated / legacy / broken code has been removed.
+// Use this in imports: import 'transaction_form_screen_new.dart';
+// It will forward to the actual implementation in transaction_form_screen_new.dart.
+
+export 'transaction_form_screen_new.dart';
+/*
+          SnackBar(content: Text('Gagal memilih foto: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _uploadPhoto() async {
+    if (_photoFile == null) return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    setState(() => _uploadingPhoto = true);
+    try {
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('users/${user.uid}/transactions/temp/${DateTime.now().millisecondsSinceEpoch}.jpg');
+      if (kIsWeb) {
+        final bytes = await _photoFile!.readAsBytes();
+        await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+      } else {
+        await ref.putFile(File(_photoFile!.path));
+      }
+      final url = await ref.getDownloadURL();
+      if (mounted) setState(() => _photoUrl = url);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal upload foto: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingPhoto = false);
+    }
+  }
+
+  Future<void> _removePhoto() async {
+    setState(() {
+      _photoFile = null;
+      _photoUrl = null;
+    });
+  }
+
+  Future<void> _submit() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Silakan masuk terlebih dahulu')),
+      );
+      return;
+    }
+    if (_walletId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Silakan pilih dompet')),
+      );
+      return;
+    }
+    if (_categoryId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Silakan pilih kategori')),
+      );
+      return;
+    }
+    final cleanAmount = _amount.text.replaceAll(RegExp(r'[^\d]'), '');
+    final amountValue = int.tryParse(cleanAmount) ?? 0;
+    if (amountValue <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Masukkan jumlah yang valid')),
+      );
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      final tx = TransactionModel(
+        id: '',
+        title: _title.text.trim().isEmpty ? 'Transaksi' : _title.text.trim(),
+        amount: amountValue.toDouble(),
+        type: _type,
+        categoryId: _categoryId!,
+        walletId: _walletId!,
+        toWalletId: null,
+        date: _date,
+        notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+        photoUrl: _photoUrl,
+        userId: user.uid,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        eventId: _eventId,
+        withPerson: _withPersonController.text.trim().isEmpty
+            ? null
+            : _withPersonController.text.trim(),
+        location: _locationController.text.trim().isEmpty
+            ? null
+            : _locationController.text.trim(),
+        reminderAt: _reminderAt,
+      );
+      await TransactionService().add(user.uid, tx);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Transaksi berhasil disimpan'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.of(context).pop(true);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Terjadi kesalahan: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: Text('Silakan masuk untuk membuat transaksi')),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.grey[100],
+      appBar: AppBar(
+        title: const Text('Transaksi Baru'),
+        elevation: 0,
+      ),
+      body: StreamBuilder(
+        stream: FirebaseDatabase.instance
+            .ref('users/${user.uid}/wallets')
+            .onValue,
+        builder: (context, walletSnap) {
+          if (walletSnap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final walletData = walletSnap.data?.snapshot.value;
+          final walletsMap =
+              (walletData is Map) ? walletData.cast<String, dynamic>() : <String, dynamic>{};
+          final wallets = walletsMap.entries
+              .map((e) => {
+                    'id': e.key,
+                    ...((e.value as Map).cast<String, dynamic>()),
+                  })
+              .toList()
+            ..sort((a, b) => ((a['name'] ?? '') as String)
+                .toLowerCase()
+                .compareTo(((b['name'] ?? '') as String).toLowerCase()));
+
+          return StreamBuilder(
+            stream: FirebaseDatabase.instance
+                .ref('users/${user.uid}/categories')
+                .onValue,
+            builder: (context, catSnap) {
+              if (catSnap.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final catData = catSnap.data?.snapshot.value;
+              final catsMap =
+                  (catData is Map) ? catData.cast<String, dynamic>() : <String, dynamic>{};
+              final cats = catsMap.entries
+                  .map((e) => {
+                        'id': e.key,
+                        ...((e.value as Map).cast<String, dynamic>()),
+                      })
+                  .toList()
+                ..sort((a, b) => ((a['name'] ?? '') as String)
+                    .toLowerCase()
+                    .compareTo(((b['name'] ?? '') as String).toLowerCase()));
+              final Map<String, Map<String, dynamic>> catsIndex = {
+                for (final m in cats) m['id'] as String: m,
+              };
+
+              return StreamBuilder(
+                stream: FirebaseDatabase.instance
+                    .ref('users/${user.uid}/events')
+                    .onValue,
+                builder: (context, eventSnap) {
+                  if (eventSnap.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final eventData = eventSnap.data?.snapshot.value;
+                  final eventsMap = (eventData is Map)
+                      ? eventData.cast<String, dynamic>()
+                      : <String, dynamic>{};
+                  final events = eventsMap.entries
+                      .map((e) => {
+                            'id': e.key,
+                            ...((e.value as Map).cast<String, dynamic>()),
+                          })
+                      .toList()
+                    ..sort((a, b) => ((a['name'] ?? '') as String)
+                        .toLowerCase()
+                        .compareTo(((b['name'] ?? '') as String).toLowerCase()));
+
+                  return Form(
                     key: _formKey,
                     child: Column(
                       children: [
@@ -43,12 +257,82 @@ export 'transaction_form_screen_new.dart';
     );
   }
 
-  Widget _buildSectionCard({required Widget child}) => Container();
+  Widget _buildSectionCard({required Widget child}) => Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border(bottom: BorderSide(color: Colors.grey[200]!, width: 1)),
+        ),
+        child: child,
+      );
 
-  Widget _buildWalletCard(List<Map<String, dynamic>> wallets) => Container();
+  Widget _buildWalletCard(List<Map<String, dynamic>> wallets) {
+    return _buildSectionCard(
+      child: InkWell(
+        onTap: () => _showWalletPicker(context, wallets),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: Colors.orange.shade100,
+                radius: 20,
+                child: _walletId == null
+                    ? Icon(Icons.account_balance_wallet,
+                        color: Colors.orange.shade700, size: 20)
+                    : Text(
+                        wallets
+                                .firstWhere(
+                                  (w) => w['id'] == _walletId,
+                                  orElse: () => {'icon': '💰'},
+                                )['icon']
+                                ?.toString() ??
+                            '💰',
+                        style: const TextStyle(fontSize: 20),
+                      ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _walletId == null
+                      ? 'Dompet'
+                      : wallets
+                              .firstWhere(
+                                (w) => w['id'] == _walletId,
+                                orElse: () => {'name': 'Dompet'},
+                              )['name']
+                              ?.toString() ??
+                          'Dompet',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: _walletId == null ? Colors.grey[400] : Colors.black87,
+                  ),
+                ),
+              ),
+              Icon(Icons.chevron_right, color: Colors.grey[400]),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _buildAmountCard() {
-    return Container();
+    return _buildSectionCard(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text('IDR',
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
                       color: Colors.black54)),
             ),
             const SizedBox(width: 12),
@@ -2555,7 +2839,6 @@ export 'transaction_form_screen_new.dart';
     );
   }
 }
-*/
 */
 */
 

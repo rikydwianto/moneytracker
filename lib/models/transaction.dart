@@ -70,6 +70,16 @@ class TransactionModel extends Equatable {
   @HiveField(18)
   final double? paidAmount; // Jumlah yang sudah dibayar
 
+  // Additional optional context fields
+  @HiveField(19)
+  final String? withPerson; // Orang terkait transaksi
+
+  @HiveField(20)
+  final String? location; // Lokasi transaksi
+
+  @HiveField(21)
+  final DateTime? reminderAt; // Waktu pengingat (opsional)
+
   const TransactionModel({
     required this.id,
     required this.title,
@@ -90,6 +100,9 @@ class TransactionModel extends Equatable {
     this.eventId,
     this.dueDate,
     this.paidAmount,
+    this.withPerson,
+    this.location,
+    this.reminderAt,
   });
 
   // Convert to Firestore document
@@ -112,6 +125,9 @@ class TransactionModel extends Equatable {
       'eventId': eventId,
       'dueDate': dueDate != null ? Timestamp.fromDate(dueDate!) : null,
       'paidAmount': paidAmount,
+      'withPerson': withPerson,
+      'location': location,
+      'reminderAt': reminderAt != null ? Timestamp.fromDate(reminderAt!) : null,
     };
   }
 
@@ -135,6 +151,9 @@ class TransactionModel extends Equatable {
       'eventId': eventId,
       'dueDate': dueDate?.millisecondsSinceEpoch,
       'paidAmount': paidAmount,
+      'withPerson': withPerson,
+      'location': location,
+      'reminderAt': reminderAt?.millisecondsSinceEpoch,
     };
   }
 
@@ -167,6 +186,11 @@ class TransactionModel extends Equatable {
           : null,
       paidAmount: data['paidAmount'] != null
           ? (data['paidAmount'] as num).toDouble()
+          : null,
+      withPerson: data['withPerson'] as String?,
+      location: data['location'] as String?,
+      reminderAt: data['reminderAt'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(data['reminderAt'] as int)
           : null,
     );
   }
@@ -204,6 +228,11 @@ class TransactionModel extends Equatable {
       paidAmount: data['paidAmount'] != null
           ? (data['paidAmount'] as num).toDouble()
           : null,
+      withPerson: data['withPerson'] as String?,
+      location: data['location'] as String?,
+      reminderAt: data['reminderAt'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(data['reminderAt'] as int)
+          : null,
     );
   }
 
@@ -229,6 +258,9 @@ class TransactionModel extends Equatable {
       'eventId': eventId,
       'dueDate': dueDate?.toIso8601String(),
       'paidAmount': paidAmount,
+      'withPerson': withPerson,
+      'location': location,
+      'reminderAt': reminderAt?.toIso8601String(),
     };
   }
 
@@ -259,6 +291,11 @@ class TransactionModel extends Equatable {
       paidAmount: json['paidAmount'] != null
           ? (json['paidAmount'] as num).toDouble()
           : null,
+      withPerson: json['withPerson'] as String?,
+      location: json['location'] as String?,
+      reminderAt: json['reminderAt'] != null
+          ? DateTime.parse(json['reminderAt'])
+          : null,
     );
   }
 
@@ -283,6 +320,9 @@ class TransactionModel extends Equatable {
     String? eventId,
     DateTime? dueDate,
     double? paidAmount,
+    String? withPerson,
+    String? location,
+    DateTime? reminderAt,
   }) {
     return TransactionModel(
       id: id ?? this.id,
@@ -304,6 +344,9 @@ class TransactionModel extends Equatable {
       eventId: eventId ?? this.eventId,
       dueDate: dueDate ?? this.dueDate,
       paidAmount: paidAmount ?? this.paidAmount,
+      withPerson: withPerson ?? this.withPerson,
+      location: location ?? this.location,
+      reminderAt: reminderAt ?? this.reminderAt,
     );
   }
 
@@ -328,5 +371,8 @@ class TransactionModel extends Equatable {
     eventId,
     dueDate,
     paidAmount,
+    withPerson,
+    location,
+    reminderAt,
   ];
 }

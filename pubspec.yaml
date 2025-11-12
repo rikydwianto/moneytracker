@@ -94,6 +94,7 @@ dependencies:
   package_info_plus: ^8.0.2
   device_info_plus: ^10.1.2
   pdf: ^3.11.3
+  shared_preferences: ^2.3.2
 
 dev_dependencies:
   flutter_test:

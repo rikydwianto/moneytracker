@@ -9,7 +9,7 @@ import 'screens/splash_screen.dart';
 import 'screens/debug/debug_splash_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/auth/auth_screen.dart';
-import 'screens/transaction/transaction_form_screen.dart';
+import 'screens/transaction/transaction_form_screen_new.dart';
 import 'screens/transaction/transaction_detail_screen.dart';
 import 'screens/wallet/wallet_form_screen.dart';
 import 'screens/wallet/wallets_manage_screen.dart';

@@ -155,11 +155,7 @@ class PinKeyboard extends StatelessWidget {
             ),
           ],
         ),
-        child: Icon(
-          biometricIcon,
-          size: 28,
-          color: Colors.blue.shade700,
-        ),
+        child: Icon(biometricIcon, size: 28, color: Colors.blue.shade700),
       ),
     );
   }

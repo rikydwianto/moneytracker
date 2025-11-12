@@ -226,7 +226,7 @@ class NotificationService {
       data: {'eventName': eventName, 'action': action, 'eventId': eventId},
     );
 
-  // Removed verbose event notification print
+    // Removed verbose event notification print
   }
 
   // Format amount helper

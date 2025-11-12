@@ -649,15 +649,14 @@ class _WalletMenuBottomSheetState extends State<WalletMenuBottomSheet> {
 
             const SizedBox(height: 4),
 
-            _buildMenuItem(
-              context,
-              icon: Icons.delete,
-              title: 'Hapus Dompet',
-              subtitle: 'Hapus dompet dan semua datanya',
-              onTap: () => _deleteWallet(context),
-              isDestructive: true,
-            ),
-
+            // _buildMenuItem(
+            //   context,
+            //   icon: Icons.delete,
+            //   title: 'Hapus Dompet',
+            //   subtitle: 'Hapus dompet dan semua datanya',
+            //   onTap: () => _deleteWallet(context),
+            //   isDestructive: true,
+            // ),
             const SizedBox(height: 20),
           ],
         ),

@@ -1,5 +1,11 @@
 {
   "rules": {
+    "doa_pendek": {
+      "isi": {
+        ".read": true,
+        ".write": "auth != null && auth.uid === '7ekW10BRpxYRTYfxvyDT3XXfgZW2'"
+      }
+    },
     "users": {
       "$uid": {
         ".read": "$uid === auth.uid",

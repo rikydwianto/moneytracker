@@ -286,10 +286,12 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
               ? walletData.cast<String, dynamic>()
               : <String, dynamic>{};
           final wallets = walletsMap.entries
-              .map((e) => {
-                    'id': e.key,
-                    ...((e.value as Map).cast<String, dynamic>()),
-                  })
+              .map(
+                (e) => {
+                  'id': e.key,
+                  ...((e.value as Map).cast<String, dynamic>()),
+                },
+              )
               .toList();
           // Custom sort: any wallet whose name contains 'tunai' (case-insensitive)
           // should appear on top, preserving alphabetical order within groups.
@@ -365,12 +367,15 @@ class _TransactionFormScreenState extends State<TransactionFormScreen> {
 
                   // Auto-select an active event if present and nothing selected yet
                   if (_eventId == null) {
-                    final active =
-                        events.where((e) => e['isActive'] == true).toList();
+                    final active = events
+                        .where((e) => e['isActive'] == true)
+                        .toList();
                     if (active.isNotEmpty) {
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         if (mounted && _eventId == null) {
-                          setState(() => _eventId = active.first['id'] as String);
+                          setState(
+                            () => _eventId = active.first['id'] as String,
+                          );
                         }
                       });
                     }
@@ -1656,9 +1661,13 @@ class _CategoryPickerSheetState extends State<_CategoryPickerSheet>
             margin: const EdgeInsets.symmetric(horizontal: 16),
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.7),
+              color: Theme.of(
+                context,
+              ).colorScheme.surfaceVariant.withOpacity(0.7),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
             ),
             child: TabBar(
               controller: _tabController,
@@ -1673,8 +1682,14 @@ class _CategoryPickerSheetState extends State<_CategoryPickerSheet>
               isScrollable: false,
               labelColor: Colors.white,
               unselectedLabelColor: Colors.grey[700],
-              labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-              unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+              labelStyle: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+              unselectedLabelStyle: const TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: 13,
+              ),
               tabs: const [
                 Tab(
                   child: Row(

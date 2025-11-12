@@ -139,8 +139,9 @@ class TransactionDetailScreen extends StatelessWidget {
     String eventId,
   ) async {
     try {
-      final snapshot =
-          await FirebaseDatabase.instance.ref('users/$userId/events/$eventId').get();
+      final snapshot = await FirebaseDatabase.instance
+          .ref('users/$userId/events/$eventId')
+          .get();
       if (snapshot.exists) {
         final data = snapshot.value as Map;
         return data.cast<String, dynamic>();
@@ -283,13 +284,16 @@ class TransactionDetailScreen extends StatelessWidget {
                   Future.value(null),
               ]),
               builder: (context, snapshot) {
-                final categoryData = snapshot.data != null && snapshot.data!.isNotEmpty
+                final categoryData =
+                    snapshot.data != null && snapshot.data!.isNotEmpty
                     ? snapshot.data![0]
                     : null;
-                final walletData = snapshot.data != null && snapshot.data!.length >= 2
+                final walletData =
+                    snapshot.data != null && snapshot.data!.length >= 2
                     ? snapshot.data![1]
                     : null;
-                final eventData = snapshot.data != null && snapshot.data!.length >= 3
+                final eventData =
+                    snapshot.data != null && snapshot.data!.length >= 3
                     ? snapshot.data![2]
                     : null;
 
@@ -304,10 +308,7 @@ class TransactionDetailScreen extends StatelessWidget {
                           borderRadius: BorderRadius.circular(28),
                           gradient: LinearGradient(
                             colors: isExpense
-                                ? [
-                                    Colors.red.shade700,
-                                    Colors.red.shade400,
-                                  ]
+                                ? [Colors.red.shade700, Colors.red.shade400]
                                 : [
                                     Colors.green.shade700,
                                     Colors.green.shade400,
@@ -352,7 +353,12 @@ class TransactionDetailScreen extends StatelessWidget {
                               ),
                             ),
                             Padding(
-                              padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
+                              padding: const EdgeInsets.fromLTRB(
+                                24,
+                                28,
+                                24,
+                                24,
+                              ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
@@ -400,9 +406,13 @@ class TransactionDetailScreen extends StatelessWidget {
                                     ).createShader(rect),
                                     blendMode: BlendMode.srcIn,
                                     child: AnimatedSwitcher(
-                                      duration: const Duration(milliseconds: 300),
+                                      duration: const Duration(
+                                        milliseconds: 300,
+                                      ),
                                       child: Text(
-                                        IdrFormatters.format(transaction.amount),
+                                        IdrFormatters.format(
+                                          transaction.amount,
+                                        ),
                                         key: ValueKey(transaction.amount),
                                         style: const TextStyle(
                                           fontSize: 36,
@@ -420,9 +430,13 @@ class TransactionDetailScreen extends StatelessWidget {
                                       children: [
                                         if (categoryData != null)
                                           Padding(
-                                            padding: const EdgeInsets.only(right: 8),
+                                            padding: const EdgeInsets.only(
+                                              right: 8,
+                                            ),
                                             child: _buildChip(
-                                              label: categoryData['name'] ?? 'Kategori',
+                                              label:
+                                                  categoryData['name'] ??
+                                                  'Kategori',
                                               icon: _getCategoryIcon(
                                                 categoryData['name'] ?? '',
                                               ),
@@ -434,16 +448,23 @@ class TransactionDetailScreen extends StatelessWidget {
                                           ),
                                         if (walletData != null)
                                           Padding(
-                                            padding: const EdgeInsets.only(right: 8),
+                                            padding: const EdgeInsets.only(
+                                              right: 8,
+                                            ),
                                             child: _buildChip(
-                                              label: walletData['name'] ?? 'Dompet',
-                                              icon: Icons.account_balance_wallet,
+                                              label:
+                                                  walletData['name'] ??
+                                                  'Dompet',
+                                              icon:
+                                                  Icons.account_balance_wallet,
                                               color: Colors.orange,
                                               lightOnDark: true,
                                             ),
                                           ),
                                         Padding(
-                                          padding: const EdgeInsets.only(right: 8),
+                                          padding: const EdgeInsets.only(
+                                            right: 8,
+                                          ),
                                           child: _buildChip(
                                             label: DateHelpers.dateTime.format(
                                               transaction.date,
@@ -455,9 +476,12 @@ class TransactionDetailScreen extends StatelessWidget {
                                         ),
                                         if (eventData != null)
                                           Padding(
-                                            padding: const EdgeInsets.only(right: 8),
+                                            padding: const EdgeInsets.only(
+                                              right: 8,
+                                            ),
                                             child: _buildChip(
-                                              label: eventData['name'] ?? 'Acara',
+                                              label:
+                                                  eventData['name'] ?? 'Acara',
                                               icon: Icons.event,
                                               color: Colors.purple,
                                               lightOnDark: true,
@@ -493,8 +517,10 @@ class TransactionDetailScreen extends StatelessWidget {
                               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                               child: Row(
                                 children: [
-                                  Icon(Icons.info_outline,
-                                      color: Colors.blueGrey[400]),
+                                  Icon(
+                                    Icons.info_outline,
+                                    color: Colors.blueGrey[400],
+                                  ),
                                   const SizedBox(width: 8),
                                   const Text(
                                     'Rincian',
@@ -787,7 +813,9 @@ class TransactionDetailScreen extends StatelessWidget {
       duration: const Duration(milliseconds: 200),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: lightOnDark ? Colors.white.withOpacity(0.15) : color.withOpacity(0.1),
+        color: lightOnDark
+            ? Colors.white.withOpacity(0.15)
+            : color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
           color: lightOnDark ? Colors.white24 : color.withOpacity(0.25),
@@ -796,11 +824,7 @@ class TransactionDetailScreen extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            icon,
-            size: 16,
-            color: lightOnDark ? Colors.white : color,
-          ),
+          Icon(icon, size: 16, color: lightOnDark ? Colors.white : color),
           const SizedBox(width: 6),
           Text(
             label,

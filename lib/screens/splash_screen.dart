@@ -1,7 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
-class SplashScreen extends StatelessWidget {
+class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
+
+  @override
+  _SplashScreenState createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  // Remove hardcoded version; load dynamically from pubspec.yaml via package_info_plus.
+  String? _versi; // set asynchronously in initState
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    _versi = '${info.version}+${info.buildNumber}';
+    if (mounted) setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -116,7 +137,7 @@ class SplashScreen extends StatelessWidget {
                 Column(
                   children: [
                     Text(
-                      'Versi 1.0.0',
+                      'Versi ${_versi ?? ''}',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Colors.white.withOpacity(0.8),
                         fontSize: 13,

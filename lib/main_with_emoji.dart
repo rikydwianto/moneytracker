@@ -6,10 +6,9 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
-import 'screens/debug/debug_splash_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/auth/auth_screen.dart';
-import 'screens/transaction/transaction_form_screen.dart';
+import 'screens/transaction/transaction_form_screen_new.dart';
 import 'screens/transaction/transaction_detail_screen.dart';
 import 'screens/wallet/wallet_form_screen.dart';
 import 'screens/wallet/wallets_manage_screen.dart';
@@ -22,7 +21,6 @@ import 'screens/event/events_screen.dart';
 import 'screens/debug/app_check_debug_screen.dart';
 import 'utils/app_theme.dart';
 import 'services/user_service.dart';
-import 'config/app_check_config.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
 
 // CONFIGURATION: Set to false to disable App Check temporarily
@@ -41,27 +39,28 @@ void main() async {
   if (ENABLE_APP_CHECK) {
     try {
       print('🔄 Attempting to activate Firebase App Check...');
-      
+
       // Try different providers based on build mode
       await FirebaseAppCheck.instance.activate(
         androidProvider: AndroidProvider.debug,
         appleProvider: AppleProvider.debug,
       );
-      
+
       print('✅ Firebase App Check activated successfully');
-      
+
       // Test token retrieval
       try {
         final token = await FirebaseAppCheck.instance.getToken();
-        print('🔑 App Check token obtained: ${token?.substring(0, 20) ?? 'null'}...');
+        print(
+          '🔑 App Check token obtained: ${token?.substring(0, 20) ?? 'null'}...',
+        );
       } catch (tokenError) {
         print('⚠️  App Check token error: $tokenError');
       }
-      
     } catch (e) {
       print('❌ Firebase App Check activation failed: $e');
       print('⚠️  App will continue without App Check protection');
-      
+
       // Additional debug info
       print('📱 Platform: Android');
       print('🏗️  Build mode: Debug');
@@ -124,8 +123,10 @@ class _MyAppState extends State<MyApp> {
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
-          print('Auth state: ${snapshot.connectionState}, hasData: ${snapshot.hasData}, data: ${snapshot.data}');
-          
+          print(
+            'Auth state: ${snapshot.connectionState}, hasData: ${snapshot.hasData}, data: ${snapshot.data}',
+          );
+
           // Show splash while waiting for auth state
           if (snapshot.connectionState == ConnectionState.waiting) {
             print('Showing splash - waiting for auth state');
@@ -163,7 +164,7 @@ class _MyAppState extends State<MyApp> {
 
           final user = snapshot.data;
           print('Current user: ${user?.uid}');
-          
+
           if (user == null) {
             print('No user - showing auth screen');
             return const AuthScreen();
@@ -173,8 +174,10 @@ class _MyAppState extends State<MyApp> {
           return FutureBuilder<void>(
             future: UserService().ensureUserInitialized(user),
             builder: (context, initSnapshot) {
-              print('User init state: ${initSnapshot.connectionState}, hasError: ${initSnapshot.hasError}');
-              
+              print(
+                'User init state: ${initSnapshot.connectionState}, hasError: ${initSnapshot.hasError}',
+              );
+
               if (initSnapshot.connectionState == ConnectionState.waiting) {
                 print('Showing splash - initializing user data');
                 return const SplashScreen();

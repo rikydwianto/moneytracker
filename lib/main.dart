@@ -5,6 +5,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'firebase_options.dart';
+import 'shared/firebase_bootstrap.dart';
 import 'services/notification_service.dart';
 import 'screens/splash_screen.dart';
 // Removed direct HomeScreen import; shown via AppLockGate
@@ -50,9 +51,9 @@ void main() async {
   // Locale initialized
 
   // Initialize Firebase
-  // Firebase initializing
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  // Firebase initialized
+  // Enable RTDB persistence early (before any Database instance is created)
+  await FirebaseBootstrap.ensureDatabaseConfigured();
 
   // Initialize Firebase App Check with conditional loading
   if (ENABLE_APP_CHECK) {

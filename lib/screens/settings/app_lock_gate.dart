@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
+import '../../utils/google_signout_helper.dart';
 import 'app_pin_verify_screen.dart';
 import '../home_screen.dart';
 import '../splash_screen.dart';
@@ -143,6 +144,7 @@ class _AppLockGateState extends State<AppLockGate> {
                 const SizedBox(height: 12),
                 TextButton(
                   onPressed: () async {
+                    await signOutGoogleIfNeeded();
                     await FirebaseAuth.instance.signOut();
                   },
                   child: const Text('Keluar Akun'),

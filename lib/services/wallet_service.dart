@@ -373,7 +373,7 @@ class WalletService {
       walletName: to.name,
     );
 
-  // Removed verbose notification print
+    // Removed verbose notification print
   }
 
   // Set a wallet as default and unset other wallets

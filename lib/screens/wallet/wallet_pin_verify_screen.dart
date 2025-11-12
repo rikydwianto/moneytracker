@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../widgets/pin_keyboard.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
 
 /// Screen untuk verifikasi PIN sebelum akses wallet yang di-hide
 class WalletPinVerifyScreen extends StatefulWidget {
@@ -28,7 +30,7 @@ class _WalletPinVerifyScreenState extends State<WalletPinVerifyScreen>
   late AnimationController _shakeController;
   late Animation<double> _shakeAnimation;
   final LocalAuthentication _localAuth = LocalAuthentication();
-  bool _canCheckBiometrics = false;
+  bool _canCheckBiometrics = false; // reflects device+setting combined
   bool _isAuthenticating = false;
 
   @override
@@ -49,9 +51,21 @@ class _WalletPinVerifyScreenState extends State<WalletPinVerifyScreen>
       final canCheck = await _localAuth.canCheckBiometrics;
       final isDeviceSupported = await _localAuth.isDeviceSupported();
       final available = await _localAuth.getAvailableBiometrics();
+      bool settingEnabled = false;
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final snap = await FirebaseDatabase.instance
+            .ref('users/${user.uid}/settings/biometricForPinEnabled')
+            .get();
+        settingEnabled = snap.value == true;
+      }
       if (mounted) {
         setState(() {
-          _canCheckBiometrics = canCheck && isDeviceSupported && available.isNotEmpty;
+          _canCheckBiometrics =
+              canCheck &&
+              isDeviceSupported &&
+              available.isNotEmpty &&
+              settingEnabled;
         });
       }
     } on PlatformException {

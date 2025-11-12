@@ -36,13 +36,16 @@ class TransactionModelAdapter extends TypeAdapter<TransactionModel> {
       eventId: fields[16] as String?,
       dueDate: fields[17] as DateTime?,
       paidAmount: fields[18] as double?,
+      withPerson: fields[19] as String?,
+      location: fields[20] as String?,
+      reminderAt: fields[21] as DateTime?,
     );
   }
 
   @override
   void write(BinaryWriter writer, TransactionModel obj) {
     writer
-      ..writeByte(19)
+      ..writeByte(22)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -80,7 +83,13 @@ class TransactionModelAdapter extends TypeAdapter<TransactionModel> {
       ..writeByte(17)
       ..write(obj.dueDate)
       ..writeByte(18)
-      ..write(obj.paidAmount);
+      ..write(obj.paidAmount)
+      ..writeByte(19)
+      ..write(obj.withPerson)
+      ..writeByte(20)
+      ..write(obj.location)
+      ..writeByte(21)
+      ..write(obj.reminderAt);
   }
 
   @override

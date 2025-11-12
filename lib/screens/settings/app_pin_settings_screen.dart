@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:local_auth/local_auth.dart';
+import 'package:flutter/services.dart';
 
 class AppPinSettingsScreen extends StatefulWidget {
   const AppPinSettingsScreen({super.key});
@@ -13,11 +15,31 @@ class _AppPinSettingsScreenState extends State<AppPinSettingsScreen> {
   bool _loading = true;
   bool _appLockEnabled = false;
   bool _hasPin = false;
+  bool _biometricToggle = false;
+  bool _deviceSupportsBiometric = false;
+  final LocalAuthentication _localAuth = LocalAuthentication();
 
   @override
   void initState() {
     super.initState();
     _load();
+    _checkBiometricSupport();
+  }
+
+  Future<void> _checkBiometricSupport() async {
+    try {
+      final canCheck = await _localAuth.canCheckBiometrics;
+      final isSupported = await _localAuth.isDeviceSupported();
+      final available = await _localAuth.getAvailableBiometrics();
+      if (mounted) {
+        setState(() {
+          _deviceSupportsBiometric =
+              canCheck && isSupported && available.isNotEmpty;
+        });
+      }
+    } on PlatformException {
+      if (mounted) setState(() => _deviceSupportsBiometric = false);
+    }
   }
 
   Future<void> _load() async {
@@ -36,12 +58,15 @@ class _AppPinSettingsScreenState extends State<AppPinSettingsScreen> {
       );
       final pinSnap = await settingsRef.child('pin').get();
       final lockSnap = await settingsRef.child('appLockEnabled').get();
+      final bioSnap = await settingsRef.child('biometricForPinEnabled').get();
+      final biometricEnabled = bioSnap.value == true;
       setState(() {
         _hasPin =
             pinSnap.exists &&
             pinSnap.value is String &&
             (pinSnap.value as String).isNotEmpty;
         _appLockEnabled = (lockSnap.value as bool?) ?? false;
+        _biometricToggle = biometricEnabled;
         _loading = false;
       });
     } catch (e) {
@@ -135,6 +160,49 @@ class _AppPinSettingsScreenState extends State<AppPinSettingsScreen> {
                     subtitle: const Text('Minta PIN saat aplikasi dibuka'),
                     value: _appLockEnabled,
                     onChanged: _toggleAppLock,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Card(
+                  child: SwitchListTile(
+                    secondary: Icon(
+                      Icons.fingerprint,
+                      color: _biometricToggle
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.outline,
+                    ),
+                    title: const Text('Tombol biometrik di keypad PIN'),
+                    subtitle: Text(
+                      _deviceSupportsBiometric
+                          ? 'Tampilkan tombol biometrik pada keypad PIN'
+                          : 'Perangkat tidak mendukung biometrik',
+                    ),
+                    value: _biometricToggle,
+                    onChanged: _deviceSupportsBiometric
+                        ? (val) async {
+                            final user = FirebaseAuth.instance.currentUser;
+                            if (user == null) return;
+                            try {
+                              await FirebaseDatabase.instance
+                                  .ref('users/${user.uid}/settings')
+                                  .update({
+                                    'biometricForPinEnabled': val,
+                                    'updatedAt':
+                                        DateTime.now().millisecondsSinceEpoch,
+                                  });
+                              if (mounted)
+                                setState(() => _biometricToggle = val);
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Gagal menyimpan: $e'),
+                                  ),
+                                );
+                              }
+                            }
+                          }
+                        : null,
                   ),
                 ),
                 const SizedBox(height: 8),

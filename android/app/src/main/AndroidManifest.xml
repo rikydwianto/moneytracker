@@ -5,6 +5,9 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- Biometric permissions (optional, modern devices usually don't require explicit permission) -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <uses-permission android:name="android.permission.USE_FINGERPRINT" />
     
     <application
         android:label="Money Tracker"
