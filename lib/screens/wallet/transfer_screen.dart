@@ -6,6 +6,7 @@ import '../../services/transaction_service.dart';
 import 'package:flutter/services.dart';
 import '../../widgets/custom_numeric_keyboard.dart';
 import 'package:intl/intl.dart';
+import '../home_screen.dart';
 
 class TransferScreen extends StatefulWidget {
   final Wallet sourceWallet;
@@ -44,6 +45,7 @@ class _TransferScreenState extends State<TransferScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useRootNavigator: true,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
         decoration: BoxDecoration(
@@ -110,7 +112,10 @@ class _TransferScreenState extends State<TransferScreen> {
     setState(() => _loading = true);
 
     try {
-      final amountText = _amountController.text.replaceAll('.', '').trim();
+      // Bersihkan semua karakter non-digit untuk menghindari masalah locale pemisah ribuan
+      final amountText = _amountController.text
+          .replaceAll(RegExp(r'[^\d]'), '')
+          .trim();
       final amount = double.tryParse(amountText) ?? 0.0;
 
       if (amount <= 0) {
@@ -155,7 +160,9 @@ class _TransferScreenState extends State<TransferScreen> {
 
       // 3. Jika ada biaya transfer, buat transaksi expense terpisah
       if (_hasFee && _feeController.text.isNotEmpty) {
-        final feeText = _feeController.text.replaceAll('.', '').trim();
+        final feeText = _feeController.text
+            .replaceAll(RegExp(r'[^\d]'), '')
+            .trim();
         final fee = double.tryParse(feeText) ?? 0.0;
 
         if (fee > 0) {
@@ -177,16 +184,15 @@ class _TransferScreenState extends State<TransferScreen> {
           await service.add(uid, feeTx);
         }
       }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Transfer berhasil'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        Navigator.of(context).pop(true);
-      }
+      if (!mounted) return;
+      // Tampilkan notifikasi lalu tutup halaman dengan aman (baik sebagai route biasa maupun di dalam bottom sheet)
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Transfer berhasil'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      _safePop(true);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -198,11 +204,35 @@ class _TransferScreenState extends State<TransferScreen> {
     }
   }
 
+  // Menutup halaman secara aman baik saat dibuka melalui Navigator.push maupun showModalBottomSheet
+  void _safePop([dynamic result]) {
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop(result);
+    } else {
+      Navigator.of(context, rootNavigator: true).maybePop(result);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(title: const Text('Transfer Antar Dompet'), elevation: 0),
+      appBar: AppBar(
+        title: const Text('Transfer Antar Dompet'),
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Kembali ke Dashboard',
+          onPressed: () {
+            // Navigasi langsung ke HomeScreen (Dashboard) tanpa memicu Splash/Auth ulang
+            Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const HomeScreen()),
+              (route) => false,
+            );
+          },
+        ),
+      ),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -312,6 +342,7 @@ class _TransferScreenState extends State<TransferScreen> {
                     onTap: () async {
                       final selected = await showModalBottomSheet<Wallet>(
                         context: context,
+                        useRootNavigator: true,
                         showDragHandle: true,
                         builder: (context) => SafeArea(
                           child: ListView.separated(
@@ -678,34 +709,6 @@ class _TransferScreenState extends State<TransferScreen> {
           ],
         ),
       ),
-    );
-  }
-}
-
-// Custom formatter untuk thousand separator
-class _ThousandsSeparatorInputFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    if (newValue.text.isEmpty) {
-      return newValue;
-    }
-
-    final number = int.tryParse(newValue.text.replaceAll('.', ''));
-    if (number == null) {
-      return oldValue;
-    }
-
-    final formatted = number.toString().replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]}.',
-    );
-
-    return TextEditingValue(
-      text: formatted,
-      selection: TextSelection.collapsed(offset: formatted.length),
     );
   }
 }

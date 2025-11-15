@@ -1,50 +1,41 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 import '../../models/wallet.dart';
 import '../../models/transaction.dart';
 import '../../services/transaction_service.dart';
 import '../../services/wallet_service.dart';
 import '../../services/user_service.dart';
 import '../../utils/idr.dart';
-import 'package:flutter/services.dart';
 import '../../widgets/custom_numeric_keyboard.dart';
-import 'package:intl/intl.dart';
+import '../home_screen.dart';
 
 class TransferAcrossScreen extends StatefulWidget {
   final Wallet sourceWallet;
-
   const TransferAcrossScreen({super.key, required this.sourceWallet});
-
   @override
   State<TransferAcrossScreen> createState() => _TransferAcrossScreenState();
 }
 
 class _TransferAcrossScreenState extends State<TransferAcrossScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _identifierController = TextEditingController(); // Email or Username
+  final _identifierController = TextEditingController();
   final _amountController = TextEditingController();
   final _feeController = TextEditingController();
   final _notesController = TextEditingController();
 
-  bool _hasFee = false;
-  bool _loading = false;
+  DateTime _selectedDate = DateTime.now();
+
   bool _verifying = false;
   bool _userVerified = false;
   String? _verifiedUserId;
   String? _verifiedUserName;
-  List<Map<String, String>> _userWallets = []; // List of wallet {id, name}
+  List<Map<String, String>> _userWallets = [];
   String? _selectedWalletId;
   String? _selectedWalletName;
-  DateTime _selectedDate = DateTime.now();
 
-  @override
-  void initState() {
-    super.initState();
-    // Debug: Check if sourceWallet is received properly
-    print(
-      'TransferAcrossScreen initialized with sourceWallet: ${widget.sourceWallet.name}',
-    );
-  }
+  bool _loading = false;
+  bool _hasFee = false;
 
   @override
   void dispose() {
@@ -59,6 +50,7 @@ class _TransferAcrossScreenState extends State<TransferAcrossScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      useRootNavigator: true,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
         decoration: BoxDecoration(
@@ -77,7 +69,6 @@ class _TransferAcrossScreenState extends State<TransferAcrossScreen> {
             controller: controller,
             onDone: () {
               Navigator.pop(context);
-              // Format nilai setelah selesai input
               final cleanValue = controller.text.replaceAll(
                 RegExp(r'[^\d]'),
                 '',
@@ -102,13 +93,12 @@ class _TransferAcrossScreenState extends State<TransferAcrossScreen> {
       firstDate: DateTime(2020),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
-    if (picked != null) {
-      setState(() => _selectedDate = picked);
-    }
+    if (picked != null) setState(() => _selectedDate = picked);
   }
 
   Future<void> _verifyUser() async {
-    if (_identifierController.text.trim().isEmpty) {
+    final identifier = _identifierController.text.trim();
+    if (identifier.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Masukkan Email, Username, atau Nomor HP'),
@@ -129,34 +119,22 @@ class _TransferAcrossScreenState extends State<TransferAcrossScreen> {
     });
 
     try {
-      // Step 1: Find user by email, username, or phone
-      final userId = await UserService().findUserByIdentifier(
-        _identifierController.text.trim(),
-      );
-
+      final userId = await UserService().findUserByIdentifier(identifier);
       if (userId == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text(
-                'User tidak ditemukan. Periksa email, username, atau nomor HP.',
-              ),
+              content: Text('User tidak ditemukan. Periksa kembali.'),
               backgroundColor: Colors.red,
             ),
           );
         }
-        setState(() {
-          _verifying = false;
-        });
+        setState(() => _verifying = false);
         return;
       }
 
-      // Step 2: Get user info
       final userInfo = await UserService().getUserInfo(userId);
-
-      // Step 3: Get user wallets (without balance for privacy)
       final wallets = await WalletService().getUserWallets(userId);
-
       if (wallets.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -166,9 +144,7 @@ class _TransferAcrossScreenState extends State<TransferAcrossScreen> {
             ),
           );
         }
-        setState(() {
-          _verifying = false;
-        });
+        setState(() => _verifying = false);
         return;
       }
 
@@ -205,9 +181,9 @@ class _TransferAcrossScreenState extends State<TransferAcrossScreen> {
 
   Future<void> _showWalletPicker() async {
     if (_userWallets.isEmpty) return;
-
     final selected = await showModalBottomSheet<Map<String, String>>(
       context: context,
+      useRootNavigator: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -244,7 +220,6 @@ class _TransferAcrossScreenState extends State<TransferAcrossScreen> {
                   itemBuilder: (context, index) {
                     final wallet = _userWallets[index];
                     final isSelected = _selectedWalletId == wallet['id'];
-
                     return ListTile(
                       leading: Container(
                         width: 48,
@@ -286,7 +261,6 @@ class _TransferAcrossScreenState extends State<TransferAcrossScreen> {
         );
       },
     );
-
     if (selected != null) {
       setState(() {
         _selectedWalletId = selected['id'];
@@ -297,7 +271,6 @@ class _TransferAcrossScreenState extends State<TransferAcrossScreen> {
 
   Future<void> _handleTransfer() async {
     if (!_formKey.currentState!.validate()) return;
-
     if (!_userVerified || _selectedWalletId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -307,45 +280,31 @@ class _TransferAcrossScreenState extends State<TransferAcrossScreen> {
       );
       return;
     }
-
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
-
     setState(() => _loading = true);
-
     try {
-      final amountText = _amountController.text.replaceAll('.', '').trim();
+      final amountText = _amountController.text
+          .replaceAll(RegExp(r'[^\d]'), '')
+          .trim();
       final amount = double.tryParse(amountText) ?? 0.0;
-
-      if (amount <= 0) {
-        throw Exception('Nominal harus lebih dari 0');
-      }
-
-      if (widget.sourceWallet.balance < amount) {
+      if (amount <= 0) throw Exception('Nominal harus lebih dari 0');
+      if (widget.sourceWallet.balance < amount)
         throw Exception('Saldo tidak mencukupi');
-      }
-
-      // Use verified user ID and selected wallet ID
-      if (_verifiedUserId == null || _selectedWalletId == null) {
+      if (_verifiedUserId == null || _selectedWalletId == null)
         throw Exception('Dompet tujuan tidak valid');
-      }
-
-      final service = WalletService();
-
-      // Transfer across users
-      await service.transferAcrossUsers(
+      await WalletService().transferAcrossUsers(
         uid,
         widget.sourceWallet.id,
         _verifiedUserId!,
         _selectedWalletId!,
         amount,
       );
-
-      // If there's a fee, create expense transaction
       if (_hasFee && _feeController.text.isNotEmpty) {
-        final feeText = _feeController.text.replaceAll('.', '').trim();
+        final feeText = _feeController.text
+            .replaceAll(RegExp(r'[^\d]'), '')
+            .trim();
         final fee = double.tryParse(feeText) ?? 0.0;
-
         if (fee > 0) {
           final feeTx = TransactionModel(
             id: '',
@@ -361,20 +320,17 @@ class _TransferAcrossScreenState extends State<TransferAcrossScreen> {
             createdAt: DateTime.now(),
             updatedAt: DateTime.now(),
           );
-
           await TransactionService().add(uid, feeTx);
         }
       }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Transfer berhasil'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        Navigator.of(context).pop(true);
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Transfer berhasil'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      _safePop(true);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -386,6 +342,15 @@ class _TransferAcrossScreenState extends State<TransferAcrossScreen> {
     }
   }
 
+  void _safePop([dynamic result]) {
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop(result);
+    } else {
+      Navigator.of(context, rootNavigator: true).maybePop(result);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -393,666 +358,225 @@ class _TransferAcrossScreenState extends State<TransferAcrossScreen> {
       appBar: AppBar(
         title: const Text('Transfer Antar Rekening'),
         elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Kembali ke Dashboard',
+          onPressed: () {
+            Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const HomeScreen()),
+              (route) => false,
+            );
+          },
+        ),
       ),
       body: Form(
         key: _formKey,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // Source Wallet Card
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.green.shade200, width: 2),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
+            _buildSourceWalletCard(),
+            const SizedBox(height: 16),
+            _buildTransferIcon(),
+            const SizedBox(height: 16),
+            _buildDestinationSection(),
+            const SizedBox(height: 24),
+            _buildAmountInput(),
+            const SizedBox(height: 16),
+            _buildFeeSection(),
+            const SizedBox(height: 16),
+            _buildDateSelector(),
+            const SizedBox(height: 16),
+            _buildNotesInput(),
+            const SizedBox(height: 32),
+            _buildTransferButton(),
+            const SizedBox(height: 16),
+            _buildInfoBox(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSourceWalletCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.green.shade200, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.green.shade50,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              Icons.account_balance_wallet,
+              color: Colors.green.shade700,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Dari Dompet',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  widget.sourceWallet.name,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
                   ),
-                ],
-              ),
-              child: Row(
-                children: [
+                ),
+                Text(
+                  'Saldo: ${IdrFormatters.format(widget.sourceWallet.balance)}',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTransferIcon() {
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.purple.shade50,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(Icons.swap_horiz, color: Colors.purple.shade700, size: 24),
+      ),
+    );
+  }
+
+  Widget _buildDestinationSection() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              children: [
+                Text(
+                  'Tujuan Transfer',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                const Spacer(),
+                if (_userVerified)
                   Container(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.green.shade50,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Icon(
-                      Icons.account_balance_wallet,
-                      color: Colors.green.shade700,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Dari Dompet',
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          widget.sourceWallet.name,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          'Saldo: ${IdrFormatters.format(widget.sourceWallet.balance)}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Transfer Icon
-            Center(
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.purple.shade50,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.swap_horiz,
-                  color: Colors.purple.shade700,
-                  size: 24,
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Destination User & Alias
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                     child: Row(
                       children: [
+                        Icon(
+                          Icons.check_circle,
+                          color: Colors.green.shade700,
+                          size: 14,
+                        ),
+                        const SizedBox(width: 4),
                         Text(
-                          'Tujuan Transfer',
+                          'Terverifikasi',
                           style: TextStyle(
-                            fontSize: 13,
+                            fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: Colors.grey.shade700,
+                            color: Colors.green.shade700,
                           ),
                         ),
-                        const Spacer(),
-                        if (_userVerified)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.green.shade50,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.check_circle,
-                                  color: Colors.green.shade700,
-                                  size: 14,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Terverifikasi',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.green.shade700,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
                       ],
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                    child: TextFormField(
-                      controller: _identifierController,
-                      decoration: InputDecoration(
-                        labelText: 'Email, Username, atau No HP Penerima',
-                        hintText:
-                            'Contoh: user@email.com, john_doe, atau 081234567890',
-                        prefixIcon: const Icon(Icons.person_search),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      onChanged: (value) {
-                        if (_userVerified) {
-                          setState(() {
-                            _userVerified = false;
-                            _verifiedUserId = null;
-                            _verifiedUserName = null;
-                            _userWallets = [];
-                            _selectedWalletId = null;
-                            _selectedWalletName = null;
-                          });
-                        }
-                      },
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Masukkan email, username, atau nomor HP';
-                        }
-                        return null;
-                      },
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            size: 20,
-                            color: Colors.blue.shade700,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Cari penerima dengan email, username, atau nomor HP, lalu pilih dompet tujuan',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.blue.shade900,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  if (_userVerified && _verifiedUserName != null)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.green.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.green.shade200),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.person,
-                              color: Colors.green.shade700,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'User Ditemukan',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.green.shade700,
-                                    ),
-                                  ),
-                                  Text(
-                                    _verifiedUserName!,
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.green.shade900,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Icon(
-                              Icons.check_circle,
-                              color: Colors.green.shade700,
-                              size: 20,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    child: SizedBox(
-                      height: 56,
-                      child: ElevatedButton(
-                        onPressed: _verifying ? null : _verifyUser,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _userVerified
-                              ? Colors.green
-                              : Theme.of(context).colorScheme.primary,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: _verifying
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
-                                  ),
-                                ),
-                              )
-                            : Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    _userVerified ? Icons.check : Icons.search,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    _userVerified
-                                        ? 'Terverifikasi'
-                                        : 'Verifikasi User',
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                      ),
-                    ),
-                  ),
-                  if (_userVerified && _userWallets.isNotEmpty)
-                    Container(
-                      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.green.shade200),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.account_balance_wallet,
-                            color: Colors.green.shade700,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Pilih Dompet Tujuan',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.blue.shade700,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                InkWell(
-                                  onTap: _showWalletPicker,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 8,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      border: Border.all(
-                                        color: _selectedWalletId != null
-                                            ? Colors.blue.shade300
-                                            : Colors.grey.shade300,
-                                      ),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            _selectedWalletName ??
-                                                'Tap untuk memilih',
-                                            style: TextStyle(
-                                              fontSize: 14,
-                                              fontWeight:
-                                                  _selectedWalletId != null
-                                                  ? FontWeight.w600
-                                                  : FontWeight.normal,
-                                              color: _selectedWalletId != null
-                                                  ? Colors.blue.shade900
-                                                  : Colors.grey.shade600,
-                                            ),
-                                          ),
-                                        ),
-                                        Icon(
-                                          Icons.arrow_drop_down,
-                                          color: Colors.blue.shade700,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
+              ],
             ),
-
-            const SizedBox(height: 24),
-
-            // Amount Input
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                    child: Text(
-                      'Nominal Transfer',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey.shade700,
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    child: TextFormField(
-                      controller: _amountController,
-                      readOnly: true,
-                      onTap: () => _showCustomKeyboard(_amountController),
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: '0',
-                        prefixText: 'Rp ',
-                        prefixStyle: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.grey.shade700,
-                        ),
-                        border: InputBorder.none,
-                        hintStyle: TextStyle(color: Colors.grey.shade300),
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Masukkan nominal transfer';
-                        }
-                        return null;
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Fee Option
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  SwitchListTile(
-                    title: const Text(
-                      'Ada Biaya Transfer?',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    subtitle: const Text(
-                      'Biaya admin akan dicatat sebagai pengeluaran terpisah',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                    value: _hasFee,
-                    onChanged: (value) {
-                      setState(() => _hasFee = value);
-                    },
-                  ),
-                  if (_hasFee) ...[
-                    const Divider(height: 1),
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: TextFormField(
-                        controller: _feeController,
-                        readOnly: true,
-                        onTap: () => _showCustomKeyboard(_feeController),
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        decoration: InputDecoration(
-                          labelText: 'Biaya Transfer',
-                          hintText: '0',
-                          prefixText: 'Rp ',
-                          prefixStyle: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey.shade700,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          hintStyle: TextStyle(color: Colors.grey.shade300),
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Date Selector
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.purple.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    Icons.calendar_today,
-                    color: Colors.purple.shade700,
-                    size: 20,
-                  ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: TextFormField(
+              controller: _identifierController,
+              decoration: InputDecoration(
+                labelText: 'Email, Username, atau No HP Penerima',
+                hintText: 'Contoh: user@email.com, john_doe, atau 081234567890',
+                prefixIcon: const Icon(Icons.person_search),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                title: const Text(
-                  'Tanggal Transfer',
-                  style: TextStyle(fontSize: 13),
-                ),
-                subtitle: Text(
-                  '${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
-                  ),
-                ),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                onTap: _selectDate,
               ),
+              onChanged: (value) {
+                if (_userVerified) {
+                  setState(() {
+                    _userVerified = false;
+                    _verifiedUserId = null;
+                    _verifiedUserName = null;
+                    _userWallets = [];
+                    _selectedWalletId = null;
+                    _selectedWalletName = null;
+                  });
+                }
+              },
+              validator: (value) => (value == null || value.isEmpty)
+                  ? 'Masukkan email, username, atau nomor HP'
+                  : null,
             ),
-
-            const SizedBox(height: 16),
-
-            // Notes Input
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                    child: Text(
-                      'Catatan (Opsional)',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey.shade700,
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    child: TextFormField(
-                      controller: _notesController,
-                      maxLines: 3,
-                      decoration: InputDecoration(
-                        hintText: 'Contoh: Transfer ke rekening lain...',
-                        border: InputBorder.none,
-                        hintStyle: TextStyle(color: Colors.grey.shade400),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 32),
-
-            // Transfer Button
-            SizedBox(
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _loading ? null : _handleTransfer,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  elevation: 2,
-                ),
-                child: _loading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.white,
-                          ),
-                        ),
-                      )
-                    : const Text(
-                        'Proses Transfer',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Info
-            Container(
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: Colors.blue.shade50,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue.shade200),
               ),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(
                     Icons.info_outline,
-                    color: Colors.blue.shade700,
                     size: 20,
+                    color: Colors.blue.shade700,
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Transfer antar rekening menggunakan email atau username penerima dan alias dompet. Pastikan data sudah terverifikasi sebelum melakukan transfer.',
+                      'Cari penerima dengan email, username, atau nomor HP, lalu pilih dompet tujuan',
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.blue.shade900,
@@ -1062,37 +586,426 @@ class _TransferAcrossScreenState extends State<TransferAcrossScreen> {
                 ],
               ),
             ),
-          ],
-        ),
+          ),
+          if (_userVerified && _verifiedUserName != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.person, color: Colors.green.shade700, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'User Ditemukan',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.green.shade700,
+                            ),
+                          ),
+                          Text(
+                            _verifiedUserName!,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.green.shade900,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.check_circle,
+                      color: Colors.green.shade700,
+                      size: 20,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: SizedBox(
+              height: 56,
+              child: ElevatedButton(
+                onPressed: _verifying ? null : _verifyUser,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _userVerified
+                      ? Colors.green
+                      : Theme.of(context).colorScheme.primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: _verifying
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
+                        ),
+                      )
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            _userVerified ? Icons.check : Icons.search,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            _userVerified ? 'Terverifikasi' : 'Verifikasi User',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+          ),
+          if (_userVerified && _userWallets.isNotEmpty)
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.account_balance_wallet,
+                    color: Colors.green.shade700,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Pilih Dompet Tujuan',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.blue.shade700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        InkWell(
+                          onTap: _showWalletPicker,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: _selectedWalletId != null
+                                    ? Colors.blue.shade300
+                                    : Colors.grey.shade300,
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    _selectedWalletName ?? 'Tap untuk memilih',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: _selectedWalletId != null
+                                          ? FontWeight.w600
+                                          : FontWeight.normal,
+                                      color: _selectedWalletId != null
+                                          ? Colors.blue.shade900
+                                          : Colors.grey.shade600,
+                                    ),
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.arrow_drop_down,
+                                  color: Colors.blue.shade700,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
-}
 
-// Custom formatter untuk thousand separator
-class _ThousandsSeparatorInputFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    if (newValue.text.isEmpty) {
-      return newValue;
-    }
-
-    final number = int.tryParse(newValue.text.replaceAll('.', ''));
-    if (number == null) {
-      return oldValue;
-    }
-
-    final formatted = number.toString().replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]}.',
+  Widget _buildAmountInput() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text(
+              'Nominal Transfer',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey.shade700,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: TextFormField(
+              controller: _amountController,
+              readOnly: true,
+              onTap: () => _showCustomKeyboard(_amountController),
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              decoration: InputDecoration(
+                hintText: '0',
+                prefixText: 'Rp ',
+                prefixStyle: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade700,
+                ),
+                border: InputBorder.none,
+                hintStyle: TextStyle(color: Colors.grey.shade300),
+              ),
+              validator: (value) => (value == null || value.isEmpty)
+                  ? 'Masukkan nominal transfer'
+                  : null,
+            ),
+          ),
+        ],
+      ),
     );
+  }
 
-    return TextEditingValue(
-      text: formatted,
-      selection: TextSelection.collapsed(offset: formatted.length),
+  Widget _buildFeeSection() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          SwitchListTile(
+            title: const Text(
+              'Ada Biaya Transfer?',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: const Text(
+              'Biaya admin akan dicatat sebagai pengeluaran terpisah',
+              style: TextStyle(fontSize: 12),
+            ),
+            value: _hasFee,
+            onChanged: (value) => setState(() => _hasFee = value),
+          ),
+          if (_hasFee) ...[
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: TextFormField(
+                controller: _feeController,
+                readOnly: true,
+                onTap: () => _showCustomKeyboard(_feeController),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+                decoration: InputDecoration(
+                  labelText: 'Biaya Transfer',
+                  hintText: '0',
+                  prefixText: 'Rp ',
+                  prefixStyle: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade700,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  hintStyle: TextStyle(color: Colors.grey.shade300),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDateSelector() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.purple.shade50,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            Icons.calendar_today,
+            color: Colors.purple.shade700,
+            size: 20,
+          ),
+        ),
+        title: const Text('Tanggal Transfer', style: TextStyle(fontSize: 13)),
+        subtitle: Text(
+          '${_selectedDate.day}/${_selectedDate.month}/${_selectedDate.year}',
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+        ),
+        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+        onTap: _selectDate,
+      ),
+    );
+  }
+
+  Widget _buildNotesInput() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text(
+              'Catatan (Opsional)',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey.shade700,
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: TextFormField(
+              controller: _notesController,
+              maxLines: 3,
+              decoration: InputDecoration(
+                hintText: 'Contoh: Transfer ke rekening lain...',
+                border: InputBorder.none,
+                hintStyle: TextStyle(color: Colors.grey.shade400),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTransferButton() {
+    return SizedBox(
+      height: 50,
+      child: ElevatedButton(
+        onPressed: _loading ? null : _handleTransfer,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Theme.of(context).colorScheme.primary,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          elevation: 2,
+        ),
+        child: _loading
+            ? const SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : const Text(
+                'Proses Transfer',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+      ),
+    );
+  }
+
+  Widget _buildInfoBox() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.blue.shade200),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, color: Colors.blue.shade700, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Transfer antar rekening menggunakan email atau username penerima dan dompet tujuan. Pastikan penerima dan dompet sudah terverifikasi sebelum melakukan transfer.',
+              style: TextStyle(fontSize: 12, color: Colors.blue.shade900),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

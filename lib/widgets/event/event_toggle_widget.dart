@@ -136,62 +136,58 @@ class _EventToggleWidgetState extends State<EventToggleWidget>
       builder: (context, child) {
         return Transform.scale(
           scale: _scaleAnimation.value,
-          child: InkWell(
-            onTap: _isLoading ? null : _toggleEvent,
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: widget.event.isActive
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.outline.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
                 color: widget.event.isActive
                     ? Theme.of(context).colorScheme.primary
-                    : Theme.of(context).colorScheme.outline.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: widget.event.isActive
-                      ? Theme.of(context).colorScheme.primary
-                      : Theme.of(context).colorScheme.outline,
-                  width: 1,
-                ),
+                    : Theme.of(context).colorScheme.outline,
+                width: 1,
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (_isLoading)
-                    SizedBox(
-                      width: 12,
-                      height: 12,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          widget.event.isActive
-                              ? Colors.white
-                              : Theme.of(context).colorScheme.primary,
-                        ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_isLoading)
+                  SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        widget.event.isActive
+                            ? Colors.white
+                            : Theme.of(context).colorScheme.primary,
                       ),
-                    )
-                  else
-                    Icon(
-                      widget.event.isActive
-                          ? Icons.radio_button_checked
-                          : Icons.radio_button_unchecked,
-                      size: 16,
-                      color: widget.event.isActive
-                          ? Colors.white
-                          : Theme.of(context).colorScheme.outline,
                     ),
-                  const SizedBox(width: 6),
-                  Text(
-                    widget.event.isActive ? 'Aktif' : 'Tidak Aktif',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: widget.event.isActive
-                          ? Colors.white
-                          : Theme.of(context).colorScheme.outline,
-                    ),
+                  )
+                else
+                  Icon(
+                    widget.event.isActive
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_unchecked,
+                    size: 16,
+                    color: widget.event.isActive
+                        ? Colors.white
+                        : Theme.of(context).colorScheme.outline,
                   ),
-                ],
-              ),
+                const SizedBox(width: 6),
+                Text(
+                  widget.event.isActive ? 'Aktif' : 'Tidak Aktif',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: widget.event.isActive
+                        ? Colors.white
+                        : Theme.of(context).colorScheme.outline,
+                  ),
+                ),
+              ],
             ),
           ),
         );
