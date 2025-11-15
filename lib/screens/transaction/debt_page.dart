@@ -977,7 +977,7 @@ class _DebtPageState extends State<DebtPage> with TickerProviderStateMixin {
                 children: [
                   // Filter Tabs
                   Container(
-                    padding: const EdgeInsets.fromLTRB(16, 60, 16, 16),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       boxShadow: [

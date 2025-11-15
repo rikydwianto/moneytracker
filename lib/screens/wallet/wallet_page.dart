@@ -72,7 +72,9 @@ class _WalletsPageState extends State<WalletsPage> {
                 .where((w) {
                   final wallet = w['wallet'] as Wallet;
                   final type = w['type'] as String;
-                  return !wallet.excludeFromTotal && type != 'savings';
+                  return !wallet.excludeFromTotal &&
+                      type != 'savings' &&
+                      !(w['isHidden'] as bool);
                 })
                 .map((e) => e['wallet'] as Wallet)
                 .toList()
@@ -235,9 +237,12 @@ class _WalletsPageState extends State<WalletsPage> {
                           StreamBuilder<double>(
                             stream: TransactionService().streamTotalBalance(
                               user.uid,
-                              excludeWalletIds: excludedWallets
-                                  .map((w) => w.id)
-                                  .toList(),
+                              excludeWalletIds: [
+                                ...includedWallets.map((w) => w.id),
+                                ...walletsWithType
+                                    .where((w) => w['isHidden'] == true)
+                                    .map((w) => (w['wallet'] as Wallet).id),
+                              ],
                             ),
                             builder: (context, snapshot) {
                               final balance = snapshot.data ?? 0.0;
@@ -418,9 +423,12 @@ class _WalletsPageState extends State<WalletsPage> {
                         StreamBuilder<double>(
                           stream: TransactionService().streamTotalBalance(
                             user.uid,
-                            excludeWalletIds: includedWallets
-                                .map((w) => w.id)
-                                .toList(),
+                            excludeWalletIds: [
+                              ...includedWallets.map((w) => w.id),
+                              ...walletsWithType
+                                  .where((w) => w['isHidden'] == true)
+                                  .map((w) => (w['wallet'] as Wallet).id),
+                            ],
                           ),
                           builder: (context, snapshot) {
                             // This calculates total of excluded wallets
